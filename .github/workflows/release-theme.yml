@@ -1,0 +1,53 @@
+name: Release Theme Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag matches theme version
+        run: |
+          set -euo pipefail
+
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          THEME_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' style.css | head -n 1 | xargs)"
+
+          if [ -z "${THEME_VERSION}" ]; then
+            echo "Unable to read theme version from style.css"
+            exit 1
+          fi
+
+          if [ "${TAG_VERSION}" != "${THEME_VERSION}" ]; then
+            echo "Tag version (${TAG_VERSION}) does not match style.css version (${THEME_VERSION})"
+            exit 1
+          fi
+
+      - name: Build installable theme package
+        run: bash .github/scripts/build-theme-package.sh
+
+      - name: Create or update GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" dist/timellow.zip --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/timellow.zip \
+              --title "${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi

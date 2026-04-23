@@ -109,6 +109,20 @@
 - 修改 PHP、CSS、JS 后通常刷新页面即可看到结果
 - 若改动涉及主题设置、REST 接口或发布流程，优先查看 [`functions.php`](./functions.php)
 
+## 自动发版
+
+仓库已包含 GitHub Actions 工作流 [`release-theme.yml`](./.github/workflows/release-theme.yml)，用于自动生成 WordPress 可安装的主题包。
+
+发版步骤：
+
+1. 修改 [`style.css`](./style.css) 中的 `Version`
+2. 如有需要，同步调整 [`functions.php`](./functions.php) 中的 `TIMELLOW_THEME_VERSION`
+3. 提交并推送代码
+4. 创建并推送对应 tag，例如 `v1.0.3`
+5. GitHub Actions 会自动创建或更新对应 Release，并上传 `timellow.zip`
+
+这个 `timellow.zip` 会使用 `timellow/` 作为压缩包根目录，可直接用于 WordPress 后台安装或自动更新。
+
 ## 版本信息
 
 - Theme Name: `Timellow`

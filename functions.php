@@ -3,8 +3,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('TIMELLOW_THEME_VERSION', '1.0.0');
+define('TIMELLOW_THEME_VERSION', '1.0.2');
 define('TIMELLOW_DB_VERSION', '1.0.0');
+define('TIMELLOW_THEME_UPDATE_REPO', 'jkjoy/timellow');
+define('TIMELLOW_THEME_UPDATE_CACHE_KEY', 'timellow_theme_update_release');
+define('TIMELLOW_THEME_UPDATE_ZIP_ASSET', 'timellow.zip');
 
 function timellow_get_default_options()
 {
@@ -58,6 +61,167 @@ function timellow_get_frontend_tencent_map_key()
 
     return trim((string) timellow_get_option('tencent_map_key'));
 }
+
+function timellow_get_theme_stylesheet()
+{
+    return wp_get_theme()->get_stylesheet();
+}
+
+function timellow_normalize_version_string($version)
+{
+    $version = trim((string) $version);
+
+    if ($version === '') {
+        return '';
+    }
+
+    return ltrim($version, "vV \t\n\r\0\x0B");
+}
+
+function timellow_find_github_release_asset($assets)
+{
+    if (!is_array($assets)) {
+        return array();
+    }
+
+    foreach ($assets as $asset) {
+        if (
+            !is_array($asset) ||
+            empty($asset['name']) ||
+            empty($asset['browser_download_url'])
+        ) {
+            continue;
+        }
+
+        if ((string) $asset['name'] === TIMELLOW_THEME_UPDATE_ZIP_ASSET) {
+            return $asset;
+        }
+    }
+
+    foreach ($assets as $asset) {
+        if (
+            !is_array($asset) ||
+            empty($asset['name']) ||
+            empty($asset['browser_download_url'])
+        ) {
+            continue;
+        }
+
+        if (strtolower(pathinfo((string) $asset['name'], PATHINFO_EXTENSION)) === 'zip') {
+            return $asset;
+        }
+    }
+
+    return array();
+}
+
+function timellow_get_github_theme_release()
+{
+    $cached = get_site_transient(TIMELLOW_THEME_UPDATE_CACHE_KEY);
+
+    if (is_array($cached) && !empty($cached['version'])) {
+        return $cached;
+    }
+
+    $headers = array(
+        'Accept' => 'application/vnd.github+json',
+        'User-Agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url('/'),
+    );
+    $github_token = trim((string) apply_filters('timellow_github_theme_update_token', ''));
+
+    if ($github_token !== '') {
+        $headers['Authorization'] = 'Bearer ' . $github_token;
+    }
+
+    $response = wp_remote_get(
+        'https://api.github.com/repos/' . TIMELLOW_THEME_UPDATE_REPO . '/releases/latest',
+        array(
+            'timeout' => 15,
+            'headers' => $headers,
+        )
+    );
+
+    if (is_wp_error($response)) {
+        return $response;
+    }
+
+    $status_code = (int) wp_remote_retrieve_response_code($response);
+    $body = json_decode(wp_remote_retrieve_body($response), true);
+
+    if ($status_code !== 200 || !is_array($body)) {
+        return new WP_Error(
+            'timellow_theme_update_failed',
+            '无法获取主题更新信息'
+        );
+    }
+
+    $asset = timellow_find_github_release_asset(isset($body['assets']) ? $body['assets'] : array());
+    $release = array(
+        'version' => timellow_normalize_version_string(isset($body['tag_name']) ? $body['tag_name'] : ''),
+        'details_url' => !empty($body['html_url']) ? esc_url_raw((string) $body['html_url']) : '',
+        'package' => !empty($asset['browser_download_url']) ? esc_url_raw((string) $asset['browser_download_url']) : '',
+        'published_at' => !empty($body['published_at']) ? sanitize_text_field((string) $body['published_at']) : '',
+    );
+
+    if ($release['version'] === '' || $release['package'] === '') {
+        return new WP_Error(
+            'timellow_theme_update_incomplete',
+            'GitHub Release 缺少版本号或可安装的 zip 资源'
+        );
+    }
+
+    set_site_transient(TIMELLOW_THEME_UPDATE_CACHE_KEY, $release, 6 * HOUR_IN_SECONDS);
+
+    return $release;
+}
+
+function timellow_filter_github_theme_update($update, $theme_data, $theme_stylesheet, $locales)
+{
+    if ($theme_stylesheet !== timellow_get_theme_stylesheet()) {
+        return $update;
+    }
+
+    $release = timellow_get_github_theme_release();
+
+    if (is_wp_error($release)) {
+        return false;
+    }
+
+    $current_version = timellow_normalize_version_string($theme_data->get('Version'));
+
+    if (
+        $current_version === '' ||
+        version_compare($release['version'], $current_version, '<=')
+    ) {
+        return false;
+    }
+
+    return array(
+        'theme' => $theme_stylesheet,
+        'version' => $release['version'],
+        'url' => $release['details_url'],
+        'package' => $release['package'],
+        'requires' => $theme_data->get('RequiresWP'),
+        'requires_php' => $theme_data->get('RequiresPHP'),
+    );
+}
+add_filter('update_themes_github.com', 'timellow_filter_github_theme_update', 10, 4);
+
+function timellow_clear_theme_update_cache()
+{
+    delete_site_transient(TIMELLOW_THEME_UPDATE_CACHE_KEY);
+}
+add_action('switch_theme', 'timellow_clear_theme_update_cache');
+
+function timellow_clear_theme_update_cache_after_upgrade($upgrader, $hook_extra)
+{
+    if (!is_array($hook_extra) || empty($hook_extra['type']) || $hook_extra['type'] !== 'theme') {
+        return;
+    }
+
+    timellow_clear_theme_update_cache();
+}
+add_action('upgrader_process_complete', 'timellow_clear_theme_update_cache_after_upgrade', 10, 2);
 
 function timellow_setup_theme()
 {
