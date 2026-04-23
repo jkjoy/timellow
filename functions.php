@@ -362,7 +362,7 @@ function timellow_render_post_meta_box($post)
 {
     wp_nonce_field('timellow_post_meta', 'timellow_post_meta_nonce');
 
-    $position = get_post_meta($post->ID, '_timellow_position', true);
+    $position = timellow_get_post_position($post->ID);
     $position_url = get_post_meta($post->ID, '_timellow_position_url', true);
     $is_advertise = get_post_meta($post->ID, '_timellow_is_advertise', true);
     ?>
@@ -400,7 +400,7 @@ function timellow_save_post_meta($post_id)
         return;
     }
 
-    $position = isset($_POST['timellow_position']) ? sanitize_text_field(wp_unslash($_POST['timellow_position'])) : '';
+    $position = isset($_POST['timellow_position']) ? timellow_normalize_position_label(wp_unslash($_POST['timellow_position'])) : '';
     $position_url = isset($_POST['timellow_position_url']) ? esc_url_raw(wp_unslash($_POST['timellow_position_url'])) : '';
     $is_advertise = isset($_POST['timellow_is_advertise']) ? '1' : '0';
 
@@ -783,9 +783,192 @@ function timellow_get_post_rendered_content($post = null)
     return apply_filters('the_content', $post->post_content);
 }
 
+function timellow_clean_position_fragment($value)
+{
+    $value = trim(wp_strip_all_tags((string) $value));
+
+    if ($value === '') {
+        return '';
+    }
+
+    $value = preg_replace('/\s+/u', ' ', $value);
+
+    if (!is_string($value)) {
+        return '';
+    }
+
+    return trim($value, " \t\n\r\0\x0B,，、;；|｜/／\\-_.·•・");
+}
+
+function timellow_format_position_city($city)
+{
+    $city = timellow_clean_position_fragment($city);
+
+    if ($city === '') {
+        return '';
+    }
+
+    $formatted = preg_replace('/(?:特别行政区|市)$/u', '', $city);
+
+    if (!is_string($formatted) || $formatted === '') {
+        return $city;
+    }
+
+    return $formatted;
+}
+
+function timellow_extract_position_city($position)
+{
+    $position = timellow_clean_position_fragment($position);
+
+    if ($position === '') {
+        return '';
+    }
+
+    if (preg_match('/^(北京市|上海市|天津市|重庆市|香港特别行政区|澳门特别行政区)/u', $position, $matches)) {
+        return $matches[1];
+    }
+
+    $city_source = preg_replace('/^.*?(?:省|自治区|特别行政区)/u', '', $position, 1);
+
+    if (!is_string($city_source) || $city_source === '') {
+        $city_source = $position;
+    }
+
+    if (preg_match('/^([\p{Han}]{2,16}(?:自治州|地区|盟|市))/u', $city_source, $matches)) {
+        return $matches[1];
+    }
+
+    return '';
+}
+
+function timellow_strip_position_place_prefix($place)
+{
+    $place = timellow_clean_position_fragment($place);
+
+    if ($place === '') {
+        return '';
+    }
+
+    $patterns = array(
+        '/^[\p{Han}]{1,12}(?:区|县|旗|市)(?=[\p{Han}A-Za-z0-9])/u',
+        '/^[\p{Han}A-Za-z0-9]{1,24}(?:镇|乡|街道|街|路|大道|巷|胡同|村|社区|工业园|开发区)(?=[\p{Han}A-Za-z0-9])/u',
+        '/^[A-Za-z0-9一二三四五六七八九十百千零〇\-]{1,12}(?:号|弄|栋|座|层|室)(?=[\p{Han}A-Za-z0-9])/u',
+    );
+
+    for ($index = 0; $index < 5; $index++) {
+        $updated = false;
+
+        foreach ($patterns as $pattern) {
+            if (!preg_match($pattern, $place, $matches)) {
+                continue;
+            }
+
+            $remaining = mb_substr($place, mb_strlen($matches[0], 'UTF-8'), null, 'UTF-8');
+            $remaining = timellow_clean_position_fragment($remaining);
+
+            if ($remaining === '') {
+                continue;
+            }
+
+            $place = $remaining;
+            $updated = true;
+            break;
+        }
+
+        if (!$updated) {
+            break;
+        }
+    }
+
+    return $place;
+}
+
+function timellow_is_generic_position_place($place)
+{
+    $place = timellow_clean_position_fragment($place);
+
+    if ($place === '') {
+        return true;
+    }
+
+    return preg_match(
+        '/^(?:[\p{Han}]{1,12}(?:区|县|旗|市|镇|乡|街道|街|路|大道|巷|胡同|村|社区|工业园|开发区)|[A-Za-z0-9一二三四五六七八九十百千零〇\-]{1,12}(?:号|弄|栋|座|层|室))$/u',
+        $place
+    ) === 1;
+}
+
+function timellow_normalize_position_label($position)
+{
+    $position = timellow_clean_position_fragment($position);
+
+    if ($position === '') {
+        return '';
+    }
+
+    if (preg_match('/[·•・]/u', $position)) {
+        $parts = preg_split('/\s*[·•・]\s*/u', $position);
+        $parts = array_values(array_filter(array_map('timellow_clean_position_fragment', (array) $parts)));
+
+        if (!empty($parts)) {
+            $city = timellow_format_position_city($parts[0]);
+            $place = isset($parts[1]) ? timellow_clean_position_fragment($parts[1]) : '';
+            $place = timellow_strip_position_place_prefix($place);
+            $place = timellow_clean_position_fragment($place);
+
+            if (timellow_is_generic_position_place($place)) {
+                $place = '';
+            }
+
+            if ($city !== '' && $place !== '' && $city !== $place) {
+                return $city . '·' . $place;
+            }
+
+            if ($place !== '') {
+                return $place;
+            }
+
+            if ($city !== '') {
+                return $city;
+            }
+        }
+    }
+
+    $city = timellow_extract_position_city($position);
+    $display_city = timellow_format_position_city($city);
+
+    if ($city === '') {
+        return $position;
+    }
+
+    $city_offset = mb_strpos($position, $city, 0, 'UTF-8');
+    $place = $position;
+
+    if ($city_offset !== false) {
+        $place = mb_substr($position, $city_offset + mb_strlen($city, 'UTF-8'), null, 'UTF-8');
+    }
+
+    $place = timellow_strip_position_place_prefix($place);
+    $place = timellow_clean_position_fragment($place);
+
+    if (timellow_is_generic_position_place($place)) {
+        $place = '';
+    }
+
+    if ($place === '' || $place === $city || $place === $display_city) {
+        return $display_city !== '' ? $display_city : $city;
+    }
+
+    if ($display_city === '') {
+        return $place;
+    }
+
+    return $display_city . '·' . $place;
+}
+
 function timellow_get_post_position($post_id)
 {
-    return get_post_meta($post_id, '_timellow_position', true);
+    return timellow_normalize_position_label((string) get_post_meta($post_id, '_timellow_position', true));
 }
 
 function timellow_get_post_position_url($post_id)
@@ -1768,7 +1951,7 @@ function timellow_handle_create_post(WP_REST_Request $request)
     }
 
     $content = sanitize_textarea_field((string) $request->get_param('content'));
-    $position = sanitize_text_field((string) $request->get_param('position'));
+    $position = timellow_normalize_position_label((string) $request->get_param('position'));
     $position_url = esc_url_raw((string) $request->get_param('positionUrl'));
     $visibility = sanitize_key((string) $request->get_param('visibility'));
     $is_advertise = (string) $request->get_param('isAdvertise') === '1' ? '1' : '0';

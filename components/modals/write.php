@@ -251,6 +251,154 @@ function timellowWriteModalManager() {
             return '获取地址失败，请稍后重试';
         },
 
+        normalizeLocationFragment(value) {
+            if (typeof value !== 'string') {
+                return '';
+            }
+
+            return value
+                .replace(/\s+/gu, ' ')
+                .trim()
+                .replace(/^[,，、;；|｜/／\\\-_.·•・\s]+|[,，、;；|｜/／\\\-_.·•・\s]+$/gu, '');
+        },
+
+        formatLocationCity(city) {
+            const normalized = this.normalizeLocationFragment(city);
+
+            if (!normalized) {
+                return '';
+            }
+
+            return normalized.replace(/(?:特别行政区|市)$/u, '') || normalized;
+        },
+
+        stripLocationPlacePrefix(place) {
+            let nextPlace = this.normalizeLocationFragment(place);
+
+            if (!nextPlace) {
+                return '';
+            }
+
+            const patterns = [
+                /^[\u4E00-\u9FFF]{1,12}(?:区|县|旗|市)(?=[\u4E00-\u9FFFA-Za-z0-9])/u,
+                /^[\u4E00-\u9FFFA-Za-z0-9]{1,24}(?:镇|乡|街道|街|路|大道|巷|胡同|村|社区|工业园|开发区)(?=[\u4E00-\u9FFFA-Za-z0-9])/u,
+                /^[A-Za-z0-9一二三四五六七八九十百千零〇-]{1,12}(?:号|弄|栋|座|层|室)(?=[\u4E00-\u9FFFA-Za-z0-9])/u
+            ];
+
+            for (let index = 0; index < 5; index += 1) {
+                let updated = false;
+
+                for (const pattern of patterns) {
+                    const match = nextPlace.match(pattern);
+
+                    if (!match || !match[0]) {
+                        continue;
+                    }
+
+                    const candidate = this.normalizeLocationFragment(nextPlace.slice(match[0].length));
+
+                    if (!candidate) {
+                        continue;
+                    }
+
+                    nextPlace = candidate;
+                    updated = true;
+                    break;
+                }
+
+                if (!updated) {
+                    break;
+                }
+            }
+
+            return nextPlace;
+        },
+
+        isGenericLocationPlace(place) {
+            const normalized = this.normalizeLocationFragment(place);
+
+            if (!normalized) {
+                return true;
+            }
+
+            return /^(?:[\u4E00-\u9FFF]{1,12}(?:区|县|旗|市|镇|乡|街道|街|路|大道|巷|胡同|村|社区|工业园|开发区)|[A-Za-z0-9一二三四五六七八九十百千零〇-]{1,12}(?:号|弄|栋|座|层|室))$/u.test(normalized);
+        },
+
+        joinLocationParts(city, place) {
+            const displayCity = this.formatLocationCity(city);
+            const displayPlace = this.normalizeLocationFragment(place);
+
+            if (displayCity && displayPlace && displayCity !== displayPlace) {
+                return `${displayCity}·${displayPlace}`;
+            }
+
+            return displayPlace || displayCity;
+        },
+
+        extractTencentPoiTitle(result) {
+            const candidates = [
+                result?.pois?.[0]?.title,
+                result?.pois?.[0]?.name,
+                result?.address_reference?.landmark_l2?.title,
+                result?.address_reference?.landmark_l1?.title,
+                result?.address_reference?.famous_area?.title,
+                result?.address_reference?.business_area?.title,
+                result?.address_reference?.street_number?.title
+            ];
+
+            const city = this.formatLocationCity(result?.address_component?.city || result?.ad_info?.city || '');
+            const district = this.normalizeLocationFragment(result?.address_component?.district || '');
+
+            for (const candidate of candidates) {
+                const title = this.normalizeLocationFragment(candidate);
+
+                if (!title || title === city || title === district || this.isGenericLocationPlace(title)) {
+                    continue;
+                }
+
+                return title;
+            }
+
+            return '';
+        },
+
+        simplifyTencentAddressText(result, city) {
+            let place = this.normalizeLocationFragment(
+                result?.formatted_addresses?.recommend ||
+                result?.address ||
+                ''
+            );
+
+            if (!place) {
+                return '';
+            }
+
+            const fragments = [
+                result?.address_component?.nation,
+                result?.address_component?.province,
+                result?.address_component?.city,
+                result?.address_component?.district,
+                result?.address_component?.street,
+                result?.address_component?.street_number
+            ]
+                .map((fragment) => this.normalizeLocationFragment(fragment))
+                .filter(Boolean);
+
+            fragments.forEach((fragment) => {
+                if (place.startsWith(fragment)) {
+                    place = this.normalizeLocationFragment(place.slice(fragment.length));
+                }
+            });
+
+            place = this.stripLocationPlacePrefix(place);
+
+            if (!place || place === city || this.isGenericLocationPlace(place)) {
+                return '';
+            }
+
+            return place;
+        },
+
         waitForTencentMapService() {
             if (
                 window.TMap &&
@@ -304,11 +452,15 @@ function timellowWriteModalManager() {
                 return '';
             }
 
-            return (
-                payload.result.formatted_addresses?.recommend ||
-                payload.result.address ||
-                ''
-            );
+            const result = payload.result;
+            const city = result.address_component?.city || result.ad_info?.city || '';
+            const poiTitle = this.extractTencentPoiTitle(result);
+
+            if (poiTitle) {
+                return this.joinLocationParts(city, poiTitle);
+            }
+
+            return this.joinLocationParts(city, this.simplifyTencentAddressText(result, this.formatLocationCity(city)));
         },
 
         async requestCurrentLocation() {
