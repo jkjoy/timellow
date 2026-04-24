@@ -118,7 +118,7 @@
 1. 修改 [`style.css`](./style.css) 中的 `Version`
 2. 如有需要，同步调整 [`functions.php`](./functions.php) 中的 `TIMELLOW_THEME_VERSION`
 3. 提交并推送代码
-4. 创建并推送对应 tag，例如 `v1.0.3`
+4. 创建并推送对应 tag，例如 `v1.0.4`
 5. GitHub Actions 会自动创建或更新对应 Release，并上传 `timellow.zip`
 
 这个 `timellow.zip` 会使用 `timellow/` 作为压缩包根目录，可直接用于 WordPress 后台安装或自动更新。
@@ -126,7 +126,7 @@
 ## 版本信息
 
 - Theme Name: `Timellow`
-- Version: `1.0.3`
+- Version: `1.0.4`
 - Author: `imsun`
 - Theme URI: <https://imsun.de>
 
