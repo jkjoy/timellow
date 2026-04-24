@@ -6,6 +6,7 @@ if (!defined('ABSPATH')) {
 $beian_info = (string) timellow_get_option('beian_info');
 ?>
 <?php get_template_part('components/modals/write'); ?>
+<?php get_template_part('components/modals/dialog'); ?>
 <?php if ($beian_info !== '') : ?>
     <footer class="site-footer">
         <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer"><?php echo esc_html($beian_info); ?></a>

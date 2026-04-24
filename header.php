@@ -40,7 +40,7 @@ if ($timellow_comment_user instanceof WP_User) {
 
     <script>
         window.TIMELLOW_CONFIG = {
-            actionUrl: <?php echo wp_json_encode(rest_url('timellow/v1/action')); ?>,
+            actionUrl: <?php echo wp_json_encode(timellow_get_relative_rest_url('timellow/v1/action')); ?>,
             homeUrl: <?php echo wp_json_encode(home_url('/')); ?>,
             defaultAvatar: <?php echo wp_json_encode(get_template_directory_uri() . '/assets/images/default-avatar.svg'); ?>,
             restNonce: <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>,
@@ -59,6 +59,34 @@ if ($timellow_comment_user instanceof WP_User) {
             '符号': ['❤', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮', '✝', '☪', '🕉', '☸', '✡', '🔯', '🕎', '☯', '☦', '🛐', '⛎', '♈']
         };
 
+        if (!window.TimellowDialog) {
+            const timellowDialogQueue = [];
+
+            window.TimellowDialog = {
+                __queue: timellowDialogQueue,
+                notice(message, options = {}) {
+                    return new Promise((resolve) => {
+                        timellowDialogQueue.push({
+                            type: 'alert',
+                            message: typeof message === 'string' ? message : String(message || ''),
+                            options: options || {},
+                            resolve: resolve
+                        });
+                    });
+                },
+                confirm(message, options = {}) {
+                    return new Promise((resolve) => {
+                        timellowDialogQueue.push({
+                            type: 'confirm',
+                            message: typeof message === 'string' ? message : String(message || ''),
+                            options: options || {},
+                            resolve: resolve
+                        });
+                    });
+                }
+            };
+        }
+
         function commentReplyManager() {
             return {
                 activeCommentId: null,
@@ -66,6 +94,14 @@ if ($timellow_comment_user instanceof WP_User) {
 
                 init() {
                     document.addEventListener('click', this.handleClickOutside.bind(this));
+                },
+
+                showAlert(message, options = {}) {
+                    return window.TimellowDialog.notice(message, options);
+                },
+
+                showConfirm(message, options = {}) {
+                    return window.TimellowDialog.confirm(message, options);
                 },
 
                 togglePostTimeComment(event, postId) {
@@ -226,7 +262,10 @@ if ($timellow_comment_user instanceof WP_User) {
                         const result = await response.json();
 
                         if (!result.success || !result.post) {
-                            alert(result.message || '文章编辑数据加载失败');
+                            await this.showAlert(result.message || '文章编辑数据加载失败', {
+                                title: '加载失败',
+                                tone: 'danger'
+                            });
                             return;
                         }
 
@@ -238,7 +277,10 @@ if ($timellow_comment_user instanceof WP_User) {
                         }));
                     } catch (error) {
                         console.error('文章编辑数据加载失败:', error);
-                        alert('文章编辑数据加载失败，请稍后重试');
+                        await this.showAlert('文章编辑数据加载失败，请稍后重试', {
+                            title: '加载失败',
+                            tone: 'danger'
+                        });
                     }
                 },
 
@@ -246,7 +288,14 @@ if ($timellow_comment_user instanceof WP_User) {
                     event.preventDefault();
                     event.stopPropagation();
 
-                    if (!window.confirm('确定删除这篇文章吗？此操作不可恢复。')) {
+                    const confirmed = await this.showConfirm('确定删除这篇文章吗？此操作不可恢复。', {
+                        title: '删除文章',
+                        confirmText: '删除',
+                        cancelText: '取消',
+                        tone: 'danger'
+                    });
+
+                    if (!confirmed) {
                         return;
                     }
 
@@ -267,7 +316,10 @@ if ($timellow_comment_user instanceof WP_User) {
                         const result = await response.json();
 
                         if (!result.success) {
-                            alert(result.message || '文章删除失败，请稍后重试');
+                            await this.showAlert(result.message || '文章删除失败，请稍后重试', {
+                                title: '删除失败',
+                                tone: 'danger'
+                            });
                             return;
                         }
 
@@ -283,7 +335,10 @@ if ($timellow_comment_user instanceof WP_User) {
                         window.location.href = result.redirect || window.TIMELLOW_CONFIG.homeUrl || '/';
                     } catch (error) {
                         console.error('文章删除失败:', error);
-                        alert('文章删除失败，请稍后重试');
+                        await this.showAlert('文章删除失败，请稍后重试', {
+                            title: '删除失败',
+                            tone: 'danger'
+                        });
                     }
                 },
 
@@ -291,7 +346,14 @@ if ($timellow_comment_user instanceof WP_User) {
                     event.preventDefault();
                     event.stopPropagation();
 
-                    if (!window.confirm('确定删除这条评论吗？此操作不可恢复。')) {
+                    const confirmed = await this.showConfirm('确定删除这条评论吗？此操作不可恢复。', {
+                        title: '删除评论',
+                        confirmText: '删除',
+                        cancelText: '取消',
+                        tone: 'danger'
+                    });
+
+                    if (!confirmed) {
                         return;
                     }
 
@@ -310,7 +372,10 @@ if ($timellow_comment_user instanceof WP_User) {
                         const result = await response.json();
 
                         if (!result.success) {
-                            alert(result.message || '评论删除失败，请稍后重试');
+                            await this.showAlert(result.message || '评论删除失败，请稍后重试', {
+                                title: '删除失败',
+                                tone: 'danger'
+                            });
                             return;
                         }
 
@@ -318,7 +383,10 @@ if ($timellow_comment_user instanceof WP_User) {
                         this.removeDeletedComments(postId, result.deletedIds || [commentId]);
                     } catch (error) {
                         console.error('评论删除失败:', error);
-                        alert('评论删除失败，请稍后重试');
+                        await this.showAlert('评论删除失败，请稍后重试', {
+                            title: '删除失败',
+                            tone: 'danger'
+                        });
                     }
                 },
 
@@ -474,7 +542,9 @@ if ($timellow_comment_user instanceof WP_User) {
                     const content = form.querySelector('input[name="reply_content"]').value.trim();
 
                     if (!content || (!identity.isLocked && (!identity.author || !identity.email))) {
-                        alert('请填写必要信息');
+                        await this.showAlert('请填写必要信息', {
+                            title: '信息不完整'
+                        });
                         return;
                     }
 
@@ -508,11 +578,17 @@ if ($timellow_comment_user instanceof WP_User) {
                             this.addCommentToList(postId, result.comment);
                             this.removeReplyForm();
                         } else {
-                            alert(result.message || '评论发表失败，请稍后重试');
+                            await this.showAlert(result.message || '评论发表失败，请稍后重试', {
+                                title: '评论发表失败',
+                                tone: 'danger'
+                            });
                         }
                     } catch (error) {
                         console.error('评论提交错误:', error);
-                        alert('网络错误，请稍后重试');
+                        await this.showAlert('网络错误，请稍后重试', {
+                            title: '网络错误',
+                            tone: 'danger'
+                        });
                     } finally {
                         submitBtn.disabled = false;
                         submitBtn.textContent = originalText;
@@ -591,7 +667,9 @@ if ($timellow_comment_user instanceof WP_User) {
                     const content = form.querySelector('input[name="reply_content"]').value.trim();
 
                     if (!content || (!identity.isLocked && (!identity.author || !identity.email))) {
-                        alert('请填写必要信息');
+                        await this.showAlert('请填写必要信息', {
+                            title: '信息不完整'
+                        });
                         return;
                     }
 
@@ -627,11 +705,17 @@ if ($timellow_comment_user instanceof WP_User) {
                             this.addCommentToList(postId, result.comment);
                             this.removeReplyForm();
                         } else {
-                            alert(result.message || '回复发表失败，请稍后重试');
+                            await this.showAlert(result.message || '回复发表失败，请稍后重试', {
+                                title: '回复发表失败',
+                                tone: 'danger'
+                            });
                         }
                     } catch (error) {
                         console.error('回复提交错误:', error);
-                        alert('网络错误，请稍后重试');
+                        await this.showAlert('网络错误，请稍后重试', {
+                            title: '网络错误',
+                            tone: 'danger'
+                        });
                     } finally {
                         submitBtn.disabled = false;
                         submitBtn.textContent = originalText;

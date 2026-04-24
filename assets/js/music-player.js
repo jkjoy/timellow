@@ -65,7 +65,10 @@ class MusicPlayer {
         // 错误处理
         this.audio.addEventListener('error', (e) => {
             console.error('音频加载失败:', e);
-            alert('音频加载失败，请检查音频地址是否正确');
+            window.TimellowDialog.notice('音频加载失败，请检查音频地址是否正确', {
+                title: '音频加载失败',
+                tone: 'danger'
+            });
         });
     }
 

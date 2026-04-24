@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('TIMELLOW_THEME_VERSION', '1.0.5');
+define('TIMELLOW_THEME_VERSION', '1.0.6');
 define('TIMELLOW_DB_VERSION', '1.0.0');
 define('TIMELLOW_THEME_UPDATE_REPO', 'jkjoy/timellow');
 define('TIMELLOW_THEME_UPDATE_CACHE_KEY', 'timellow_theme_update_release');
@@ -61,6 +61,28 @@ function timellow_get_frontend_tencent_map_key()
     }
 
     return trim((string) timellow_get_option('tencent_map_key'));
+}
+
+function timellow_get_relative_rest_url($route = '')
+{
+    $url = rest_url(ltrim((string) $route, '/'));
+    $parts = wp_parse_url($url);
+
+    if (!$parts || empty($parts['path'])) {
+        return $url;
+    }
+
+    $relative = (string) $parts['path'];
+
+    if (!empty($parts['query'])) {
+        $relative .= '?' . $parts['query'];
+    }
+
+    if (!empty($parts['fragment'])) {
+        $relative .= '#' . $parts['fragment'];
+    }
+
+    return $relative;
 }
 
 function timellow_get_theme_stylesheet()
@@ -223,8 +245,17 @@ add_filter('update_themes_github.com', 'timellow_filter_github_theme_update', 10
 function timellow_clear_theme_update_cache()
 {
     delete_site_transient(TIMELLOW_THEME_UPDATE_CACHE_KEY);
+    delete_site_transient('update_themes');
+    delete_site_transient('update_themes_github.com');
+    wp_clean_themes_cache(false);
 }
 add_action('switch_theme', 'timellow_clear_theme_update_cache');
+
+function timellow_clear_theme_update_cache_on_themes_page()
+{
+    timellow_clear_theme_update_cache();
+}
+add_action('load-themes.php', 'timellow_clear_theme_update_cache_on_themes_page', 1);
 
 function timellow_clear_theme_update_cache_after_upgrade($upgrader, $hook_extra)
 {
@@ -1735,10 +1766,19 @@ function timellow_resolve_like_actor(WP_REST_Request $request)
 {
     if (is_user_logged_in()) {
         $user = wp_get_current_user();
+        $author = trim((string) $user->display_name);
+
+        if ($author === '') {
+            $author = trim((string) $user->user_login);
+        }
+
+        if ($author === '') {
+            $author = '登录用户';
+        }
 
         return array(
             'key' => 'user:' . $user->ID,
-            'author' => $user->display_name,
+            'author' => $author,
             'email' => $user->user_email,
         );
     }
@@ -1770,6 +1810,126 @@ function timellow_resolve_like_actor(WP_REST_Request $request)
     );
 }
 
+function timellow_get_like_actor_alias_keys(WP_REST_Request $request, $actor_key = '')
+{
+    $alias_keys = array();
+    $comment_author = (string) $request->get_param('comment_author');
+    $comment_email = sanitize_email((string) $request->get_param('comment_email'));
+    $anonymous_id = sanitize_key((string) $request->get_param('anonymous_id'));
+
+    if ($comment_email !== '') {
+        $alias_keys[] = 'comment:' . sha1(strtolower(trim($comment_email)) . '|' . trim($comment_author));
+    }
+
+    if ($anonymous_id !== '') {
+        $alias_keys[] = 'anon:' . $anonymous_id;
+    }
+
+    return array_values(
+        array_filter(
+            array_unique($alias_keys),
+            static function ($key) use ($actor_key) {
+                return $key !== '' && $key !== $actor_key;
+            }
+        )
+    );
+}
+
+function timellow_maybe_migrate_like_actor_alias($post_id, $actor, $alias_keys)
+{
+    global $wpdb;
+
+    $post_id = (int) $post_id;
+    $actor_key = isset($actor['key']) ? (string) $actor['key'] : '';
+
+    if (
+        $post_id <= 0 ||
+        $actor_key === '' ||
+        strpos($actor_key, 'user:') !== 0 ||
+        empty($alias_keys)
+    ) {
+        return;
+    }
+
+    $table = timellow_get_likes_table_name();
+    $existing_user = $wpdb->get_var(
+        $wpdb->prepare(
+            "SELECT id FROM {$table} WHERE post_id = %d AND actor_key = %s",
+            $post_id,
+            $actor_key
+        )
+    );
+
+    if ($existing_user) {
+        return;
+    }
+
+    foreach ($alias_keys as $alias_key) {
+        $alias_id = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT id FROM {$table} WHERE post_id = %d AND actor_key = %s",
+                $post_id,
+                $alias_key
+            )
+        );
+
+        if (!$alias_id) {
+            continue;
+        }
+
+        $wpdb->update(
+            $table,
+            array(
+                'actor_key' => $actor_key,
+                'author_name' => isset($actor['author']) ? (string) $actor['author'] : '',
+                'author_email' => isset($actor['email']) ? (string) $actor['email'] : '',
+            ),
+            array(
+                'id' => (int) $alias_id,
+            ),
+            array('%s', '%s', '%s'),
+            array('%d')
+        );
+
+        break;
+    }
+}
+
+function timellow_get_like_row_author_name($row)
+{
+    $author_name = trim((string) (isset($row['author_name']) ? $row['author_name'] : ''));
+
+    if ($author_name !== '') {
+        return $author_name;
+    }
+
+    $actor_key = (string) (isset($row['actor_key']) ? $row['actor_key'] : '');
+
+    if (strpos($actor_key, 'user:') === 0) {
+        $user_id = absint(substr($actor_key, 5));
+
+        if ($user_id > 0) {
+            $user = get_userdata($user_id);
+
+            if ($user instanceof WP_User) {
+                $display_name = trim((string) $user->display_name);
+
+                if ($display_name !== '') {
+                    return $display_name;
+                }
+
+                $user_login = trim((string) $user->user_login);
+
+                if ($user_login !== '') {
+                    return $user_login;
+                }
+            }
+        }
+    }
+
+    return '匿名用户';
+}
+
 function timellow_get_like_rows($post_id)
 {
     global $wpdb;
@@ -1791,7 +1951,7 @@ function timellow_prepare_like_response($post_id, $actor_key = '')
 
     foreach ($rows as $row) {
         $like_users[] = array(
-            'author' => $row['author_name'] !== '' ? $row['author_name'] : '匿名用户',
+            'author' => timellow_get_like_row_author_name($row),
         );
     }
 
@@ -1818,6 +1978,9 @@ function timellow_handle_get_likes(WP_REST_Request $request)
 {
     $post_id = (int) $request->get_param('cid');
     $actor = timellow_resolve_like_actor($request);
+    $alias_keys = timellow_get_like_actor_alias_keys($request, $actor['key']);
+
+    timellow_maybe_migrate_like_actor_alias($post_id, $actor, $alias_keys);
 
     return timellow_prepare_like_response($post_id, $actor['key']);
 }
@@ -1828,6 +1991,9 @@ function timellow_handle_toggle_like(WP_REST_Request $request)
 
     $post_id = (int) $request->get_param('cid');
     $actor = timellow_resolve_like_actor($request);
+    $alias_keys = timellow_get_like_actor_alias_keys($request, $actor['key']);
+
+    timellow_maybe_migrate_like_actor_alias($post_id, $actor, $alias_keys);
 
     if ($post_id <= 0 || $actor['key'] === '') {
         return array(
@@ -2537,59 +2703,6 @@ function timellow_handle_update_post(WP_REST_Request $request)
     );
 }
 
-function timellow_collect_comment_thread_ids($post_id, $comment_id)
-{
-    $comment_id = (int) $comment_id;
-    $post_id = (int) $post_id;
-
-    if ($post_id <= 0 || $comment_id <= 0) {
-        return array();
-    }
-
-    $comments = get_comments(
-        array(
-            'post_id' => $post_id,
-            'status' => 'all',
-            'orderby' => 'comment_ID',
-            'order' => 'ASC',
-        )
-    );
-
-    if (empty($comments)) {
-        return array($comment_id);
-    }
-
-    $children_map = array();
-
-    foreach ($comments as $comment) {
-        $parent_id = (int) $comment->comment_parent;
-
-        if (!isset($children_map[$parent_id])) {
-            $children_map[$parent_id] = array();
-        }
-
-        $children_map[$parent_id][] = (int) $comment->comment_ID;
-    }
-
-    $stack = array($comment_id);
-    $thread_ids = array();
-
-    while (!empty($stack)) {
-        $current = array_pop($stack);
-        $thread_ids[] = $current;
-
-        if (empty($children_map[$current])) {
-            continue;
-        }
-
-        foreach (array_reverse($children_map[$current]) as $child_id) {
-            $stack[] = (int) $child_id;
-        }
-    }
-
-    return array_values(array_unique(array_map('absint', $thread_ids)));
-}
-
 function timellow_handle_delete_comment(WP_REST_Request $request)
 {
     $payload = $request->get_json_params();
@@ -2610,8 +2723,6 @@ function timellow_handle_delete_comment(WP_REST_Request $request)
         );
     }
 
-    $deleted_ids = timellow_collect_comment_thread_ids((int) $comment->comment_post_ID, $comment_id);
-
     if (!wp_delete_comment($comment_id, true)) {
         return array(
             'success' => false,
@@ -2623,7 +2734,7 @@ function timellow_handle_delete_comment(WP_REST_Request $request)
         'success' => true,
         'message' => '评论已删除',
         'postId' => (int) $comment->comment_post_ID,
-        'deletedIds' => $deleted_ids,
+        'deletedIds' => array($comment_id),
     );
 }
 

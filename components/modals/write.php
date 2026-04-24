@@ -20,6 +20,10 @@ function timellowWriteModalManager() {
         submitStatus: '',
         submitting: false,
 
+        showAlert(message, options = {}) {
+            return window.TimellowDialog.notice(message, options);
+        },
+
         get isEditing() {
             return this.editingPostId > 0;
         },
@@ -168,17 +172,23 @@ function timellowWriteModalManager() {
             const videos = normalized.filter((item) => item.mediaType === 'video');
 
             if (videos.length > 1) {
-                alert('只能选择 1 个视频');
+                this.showAlert('只能选择 1 个视频', {
+                    title: '媒体选择有误'
+                });
                 return;
             }
 
             if (videos.length > 0 && images.length > 0) {
-                alert('视频不能和图片同时选择');
+                this.showAlert('视频不能和图片同时选择', {
+                    title: '媒体选择有误'
+                });
                 return;
             }
 
             if (images.length > 9) {
-                alert('最多只能选择 9 张图片');
+                this.showAlert('最多只能选择 9 张图片', {
+                    title: '媒体选择有误'
+                });
                 return;
             }
 
@@ -187,7 +197,10 @@ function timellowWriteModalManager() {
 
         openMediaLibrary() {
             if (typeof window.wp === 'undefined' || !window.wp.media) {
-                alert('媒体库加载失败，请刷新页面后重试');
+                this.showAlert('媒体库加载失败，请刷新页面后重试', {
+                    title: '媒体库不可用',
+                    tone: 'danger'
+                });
                 return;
             }
 
@@ -513,12 +526,16 @@ function timellowWriteModalManager() {
             }
 
             if (!window.TIMELLOW_CONFIG || !window.TIMELLOW_CONFIG.locationLookupEnabled) {
-                alert('请先在主题设置中填写腾讯地图 API Key');
+                await this.showAlert('请先在主题设置中填写腾讯地图 API Key', {
+                    title: '定位未启用'
+                });
                 return;
             }
 
             if (!navigator.geolocation) {
-                alert('当前浏览器不支持定位');
+                await this.showAlert('当前浏览器不支持定位', {
+                    title: '定位不可用'
+                });
                 return;
             }
 
@@ -558,7 +575,10 @@ function timellowWriteModalManager() {
 
                 this.position = address;
             } catch (error) {
-                alert(this.resolveLocationErrorMessage(error));
+                await this.showAlert(this.resolveLocationErrorMessage(error), {
+                    title: '定位失败',
+                    tone: 'danger'
+                });
             } finally {
                 this.locationLoading = false;
             }
@@ -570,7 +590,9 @@ function timellowWriteModalManager() {
             }
 
             if (!this.postContent.trim() && this.mediaFiles.length === 0) {
-                alert('请输入内容或选择图片/视频');
+                await this.showAlert('请输入内容或选择图片/视频', {
+                    title: '内容为空'
+                });
                 return;
             }
 
@@ -614,11 +636,17 @@ function timellowWriteModalManager() {
 
                 this.submitStatus = '';
                 this.submitting = false;
-                alert(result.message || '发布失败，请稍后重试');
+                await this.showAlert(result.message || '发布失败，请稍后重试', {
+                    title: this.isEditing ? '保存失败' : '发布失败',
+                    tone: 'danger'
+                });
             } catch (error) {
                 this.submitStatus = '';
                 this.submitting = false;
-                alert('网络错误，请稍后重试');
+                await this.showAlert('网络错误，请稍后重试', {
+                    title: '网络错误',
+                    tone: 'danger'
+                });
             }
         }
     };

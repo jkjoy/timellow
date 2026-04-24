@@ -331,6 +331,9 @@ function loadLikeData(cid, $container) {
         url: url,
         type: 'GET',
         dataType: 'json',
+        headers: {
+            'X-WP-Nonce': window.TIMELLOW_CONFIG.restNonce || ''
+        },
         success: function(response) {
             if (response.success) {
                 updateLikeUI($container, response.likes, response.isLiked, response.likeUsers || []);
@@ -365,6 +368,9 @@ function doToggleLike(cid, $container) {
         url: url,
         type: 'POST',
         dataType: 'json',
+        headers: {
+            'X-WP-Nonce': window.TIMELLOW_CONFIG.restNonce || ''
+        },
         success: function(response) {
             if (response.success) {
                 updateLikeUI($container, response.likes, response.isLiked, response.likeUsers || []);
