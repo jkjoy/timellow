@@ -77,15 +77,23 @@ body {
 
 /* WordPress 标签归档页会给 body 注入 .tag，需覆盖 Bulma 的 .tag 胶囊样式污染。 */
 body.archive.tag {
+    background-color: var(--body-background);
+    font-family: 'HarmonyOS', 'Roboto', sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: normal;
     width: 100%;
+    min-height: 100vh;
+    margin: 0;
     padding: 0;
     border-radius: 0;
     height: auto;
     white-space: normal;
+    box-shadow: none;
+    text-decoration: none;
 }
 
 /* 隐藏滚动条 */
@@ -1277,7 +1285,7 @@ main {
     margin-bottom: 25px;
 }
 
-.setting-tags > a {
+.setting-tags > .setting-tag {
     font-size: 13px;
     padding: 6px 14px;
     background-color: var(--primary-background);
@@ -1289,7 +1297,7 @@ main {
     text-decoration: none;
 }
 
-.setting-tags > a:hover {
+.setting-tags > .setting-tag:hover {
     background-color: #07C160;
     color: #ffffff;
     border-color: #07C160;
@@ -2945,7 +2953,7 @@ input:checked + .slider:before {
         width: 40px;
     }
 
-    .setting-tags > a {
+    .setting-tags > .setting-tag {
         font-size: 12px;
         padding: 5px 12px;
     }
@@ -3037,7 +3045,7 @@ input:checked + .slider:before {
     background-color: #06a950;
 }
 
-:root.dark .setting-tags > a:hover {
+:root.dark .setting-tags > .setting-tag:hover {
     background-color: #07C160;
     border-color: #07C160;
 }

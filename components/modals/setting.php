@@ -34,7 +34,7 @@ if (count($tags) > 20) {
                 <div class="setting-section-title">🏷️ 热门标签</div>
                 <div class="setting-tags">
                     <?php foreach ($tags as $tag) : ?>
-                        <a class="tag" href="<?php echo esc_url(get_tag_link($tag)); ?>"><?php echo esc_html($tag->name); ?></a>
+                        <a class="setting-tag" href="<?php echo esc_url(get_tag_link($tag)); ?>"><?php echo esc_html($tag->name); ?></a>
                     <?php endforeach; ?>
                 </div>
             </div>
