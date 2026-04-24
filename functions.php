@@ -182,13 +182,25 @@ function timellow_filter_github_theme_update($update, $theme_data, $theme_styles
         return $update;
     }
 
+    $get_theme_header = static function ($key) use ($theme_data, $theme_stylesheet) {
+        if ($theme_data instanceof WP_Theme) {
+            return $theme_data->get($key);
+        }
+
+        if (is_array($theme_data) && array_key_exists($key, $theme_data)) {
+            return $theme_data[$key];
+        }
+
+        return wp_get_theme($theme_stylesheet)->get($key);
+    };
+
     $release = timellow_get_github_theme_release();
 
     if (is_wp_error($release)) {
         return false;
     }
 
-    $current_version = timellow_normalize_version_string($theme_data->get('Version'));
+    $current_version = timellow_normalize_version_string($get_theme_header('Version'));
 
     if (
         $current_version === '' ||
@@ -202,8 +214,8 @@ function timellow_filter_github_theme_update($update, $theme_data, $theme_styles
         'version' => $release['version'],
         'url' => $release['details_url'],
         'package' => $release['package'],
-        'requires' => $theme_data->get('RequiresWP'),
-        'requires_php' => $theme_data->get('RequiresPHP'),
+        'requires' => $get_theme_header('RequiresWP'),
+        'requires_php' => $get_theme_header('RequiresPHP'),
     );
 }
 add_filter('update_themes_github.com', 'timellow_filter_github_theme_update', 10, 4);
