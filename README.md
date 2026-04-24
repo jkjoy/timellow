@@ -126,7 +126,7 @@
 ## 版本信息
 
 - Theme Name: `Timellow`
-- Version: `1.0.2`
+- Version: `1.0.3`
 - Author: `imsun`
 - Theme URI: <https://imsun.de>
 
