@@ -503,35 +503,50 @@ main {
 
 .post-time-comment-modal {
     position: absolute;
-    left: -170px;
-    top: -5px;
-    width: 160px;
-    height: 32px;
+    right: calc(100% + 8px);
+    top: -8px;
+    min-width: 160px;
+    width: max-content;
     white-space: nowrap;
     background-color: var(--pj-modal-background);
     color: var(--pj-modal-color);
-    padding: 2px 4px;
-    border-radius: 2px;
+    padding: 4px 6px;
+    border-radius: 6px;
     display: flex;
     flex-direction: row;
     font-size: 12px;
     justify-content: center;
     align-items: center;
+    gap: 0;
 }
 
-.ptcm-good {
-    border-right: 1px solid var(--text-color);
-}
-
-.ptcm-good,
-.ptcm-comment {
+.ptcm-action {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 50%;
+    flex: 1 1 0;
+    min-width: 52px;
+    padding: 0 12px;
     cursor: pointer;
-    height: 20px;
+    height: 24px;
     gap: 5px;
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.ptcm-action + .ptcm-action {
+    border-left: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.ptcm-action:hover {
+    opacity: 0.88;
+}
+
+.ptcm-delete {
+    color: #ff7a7a;
 }
 
 
@@ -628,6 +643,14 @@ main {
 }
 
 /* 评论列表 */
+.pcc-comment-list > .pcc-comment-item {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    line-height: 1.7;
+}
+
 .pcc-comment-list > .pcc-comment-item a {
     font-size: 14px;
     color: var(--link);
@@ -645,6 +668,24 @@ main {
 
 .pcc-comment-content:hover {
     color: #007bff;
+}
+
+.pcc-comment-delete {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #ff6b6b;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0 2px;
+    margin-left: 6px;
+    cursor: pointer;
+    transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.pcc-comment-delete:hover {
+    opacity: 0.86;
+    color: #ff4757;
 }
 
 

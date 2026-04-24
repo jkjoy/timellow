@@ -41,11 +41,13 @@ if ($timellow_comment_user instanceof WP_User) {
     <script>
         window.TIMELLOW_CONFIG = {
             actionUrl: <?php echo wp_json_encode(rest_url('timellow/v1/action')); ?>,
+            homeUrl: <?php echo wp_json_encode(home_url('/')); ?>,
             defaultAvatar: <?php echo wp_json_encode(get_template_directory_uri() . '/assets/images/default-avatar.svg'); ?>,
             restNonce: <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>,
             locationLookupEnabled: <?php echo wp_json_encode(timellow_get_frontend_tencent_map_key() !== ''); ?>,
             commentIdentityLocked: <?php echo wp_json_encode(is_user_logged_in()); ?>,
-            currentCommentIdentity: <?php echo wp_json_encode($timellow_comment_identity); ?>
+            currentCommentIdentity: <?php echo wp_json_encode($timellow_comment_identity); ?>,
+            currentUserIsAdmin: <?php echo wp_json_encode(timellow_user_is_administrator()); ?>
         };
 
         const EMOJI_DATA = {
@@ -159,6 +161,165 @@ if ($timellow_comment_user instanceof WP_User) {
                             input.focus();
                         }
                     }, 100);
+                },
+
+                getPostItem(postId) {
+                    const likeList = document.querySelector(`.pcc-like-list[data-cid="${postId}"]`);
+
+                    if (likeList) {
+                        return likeList.closest('.post-item');
+                    }
+
+                    const commentContainer = document.querySelector(`.post-comment-container[data-cid="${postId}"]`);
+                    return commentContainer ? commentContainer.closest('.post-item') : null;
+                },
+
+                getCommentDeleteButtonHtml(postId, commentId) {
+                    if (!window.TIMELLOW_CONFIG || !window.TIMELLOW_CONFIG.currentUserIsAdmin) {
+                        return '';
+                    }
+
+                    return `<button type="button" class="pcc-comment-delete" @click.stop="deleteComment($event, '${postId}', '${commentId}')">删除</button>`;
+                },
+
+                removeDeletedComments(postId, commentIds) {
+                    const normalizedIds = Array.isArray(commentIds) ? commentIds : [commentIds];
+
+                    normalizedIds
+                        .map((id) => parseInt(id, 10))
+                        .filter(Boolean)
+                        .forEach((id) => {
+                            document
+                                .querySelectorAll(`.pcc-comment-item[data-comment-id="${id}"]`)
+                                .forEach((item) => item.remove());
+                        });
+
+                    const commentContainer = document.querySelector(`.post-comment-container[data-cid="${postId}"]`);
+
+                    if (!commentContainer) {
+                        return;
+                    }
+
+                    const likeList = commentContainer.querySelector('.pcc-like-list');
+                    const commentList = commentContainer.querySelector('.pcc-comment-list');
+                    const hasLikes = likeList && window.getComputedStyle(likeList).display !== 'none';
+                    const hasComments = commentList && commentList.querySelectorAll('.pcc-comment-item').length > 0;
+
+                    if (!hasLikes && !hasComments) {
+                        commentContainer.style.display = 'none';
+                    }
+                },
+
+                async editPost(event, postId) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    this.hidePostTimeCommentModal(postId);
+
+                    try {
+                        const response = await fetch(`${window.TIMELLOW_CONFIG.actionUrl}?do=getPostEditorData&postId=${encodeURIComponent(postId)}`, {
+                            method: 'GET',
+                            credentials: 'same-origin',
+                            headers: {
+                                'X-WP-Nonce': window.TIMELLOW_CONFIG.restNonce || ''
+                            }
+                        });
+                        const result = await response.json();
+
+                        if (!result.success || !result.post) {
+                            alert(result.message || '文章编辑数据加载失败');
+                            return;
+                        }
+
+                        window.dispatchEvent(new CustomEvent('write-modal-open', {
+                            detail: {
+                                mode: 'edit',
+                                post: result.post
+                            }
+                        }));
+                    } catch (error) {
+                        console.error('文章编辑数据加载失败:', error);
+                        alert('文章编辑数据加载失败，请稍后重试');
+                    }
+                },
+
+                async deletePost(event, postId) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (!window.confirm('确定删除这篇文章吗？此操作不可恢复。')) {
+                        return;
+                    }
+
+                    this.hidePostTimeCommentModal(postId);
+
+                    try {
+                        const response = await fetch(`${window.TIMELLOW_CONFIG.actionUrl}?do=deletePost`, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-WP-Nonce': window.TIMELLOW_CONFIG.restNonce || ''
+                            },
+                            body: JSON.stringify({
+                                postId: postId
+                            })
+                        });
+                        const result = await response.json();
+
+                        if (!result.success) {
+                            alert(result.message || '文章删除失败，请稍后重试');
+                            return;
+                        }
+
+                        this.removeReplyForm();
+
+                        const postItem = event.target.closest('.post-item') || this.getPostItem(postId);
+
+                        if (postItem && !postItem.classList.contains('post-detail-item')) {
+                            postItem.remove();
+                            return;
+                        }
+
+                        window.location.href = result.redirect || window.TIMELLOW_CONFIG.homeUrl || '/';
+                    } catch (error) {
+                        console.error('文章删除失败:', error);
+                        alert('文章删除失败，请稍后重试');
+                    }
+                },
+
+                async deleteComment(event, postId, commentId) {
+                    event.preventDefault();
+                    event.stopPropagation();
+
+                    if (!window.confirm('确定删除这条评论吗？此操作不可恢复。')) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch(`${window.TIMELLOW_CONFIG.actionUrl}?do=deleteComment`, {
+                            method: 'POST',
+                            credentials: 'same-origin',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-WP-Nonce': window.TIMELLOW_CONFIG.restNonce || ''
+                            },
+                            body: JSON.stringify({
+                                commentId: commentId
+                            })
+                        });
+                        const result = await response.json();
+
+                        if (!result.success) {
+                            alert(result.message || '评论删除失败，请稍后重试');
+                            return;
+                        }
+
+                        this.removeReplyForm();
+                        this.removeDeletedComments(postId, result.deletedIds || [commentId]);
+                    } catch (error) {
+                        console.error('评论删除失败:', error);
+                        alert('评论删除失败，请稍后重试');
+                    }
                 },
 
                 getCommentIdentityState() {
@@ -520,6 +681,7 @@ if ($timellow_comment_user instanceof WP_User) {
 
                     const isAdmin = commentData.userGroup === 'administrator';
                     const authorBadge = isAdmin ? '<span class="author-badge">作者</span>' : '';
+                    const deleteButton = this.getCommentDeleteButtonHtml(postId, commentData.coid);
 
                     if (!commentData.parent || commentData.parent == 0) {
                         commentItem.innerHTML = `
@@ -527,6 +689,7 @@ if ($timellow_comment_user instanceof WP_User) {
                             ${authorBadge}
                             <span>:</span>
                             <span class="cursor-help pcc-comment-content" @click="showReplyForm($event, '${postId}', '${commentData.coid}', '${this.escapeHtml(commentData.author)}')">${this.escapeHtml(commentData.text)}</span>
+                            ${deleteButton}
                         `;
                     } else {
                         const parentComment = targetCommentList.querySelector(`[data-comment-id="${commentData.parent}"]`);
@@ -555,6 +718,7 @@ if ($timellow_comment_user instanceof WP_User) {
                             ${parentAuthorBadge}
                             <span>:</span>
                             <span class="cursor-help pcc-comment-content" @click="showReplyForm($event, '${postId}', '${commentData.coid}', '${this.escapeHtml(commentData.author)}')">${this.escapeHtml(commentData.text)}</span>
+                            ${deleteButton}
                         `;
                     }
 

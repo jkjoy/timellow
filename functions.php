@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('TIMELLOW_THEME_VERSION', '1.0.4');
+define('TIMELLOW_THEME_VERSION', '1.0.5');
 define('TIMELLOW_DB_VERSION', '1.0.0');
 define('TIMELLOW_THEME_UPDATE_REPO', 'jkjoy/timellow');
 define('TIMELLOW_THEME_UPDATE_CACHE_KEY', 'timellow_theme_update_release');
@@ -1395,6 +1395,18 @@ function timellow_format_comment_time($timestamp)
     return wp_date('Y年m月d日', (int) $timestamp);
 }
 
+function timellow_render_comment_delete_button($post_id, $comment_id)
+{
+    if (!timellow_user_is_administrator()) {
+        return;
+    }
+    ?>
+    <button type="button"
+            class="pcc-comment-delete"
+            @click.stop="deleteComment($event, <?php echo (int) $post_id; ?>, <?php echo (int) $comment_id; ?>)">删除</button>
+    <?php
+}
+
 function timellow_render_comment_items($post_id, $limit = 5)
 {
     $comments = timellow_get_post_latest_comments_with_replies($post_id, $limit);
@@ -1409,6 +1421,7 @@ function timellow_render_comment_items($post_id, $limit = 5)
             <span>:</span>
             <span class="cursor-help pcc-comment-content"
                   @click="showReplyForm($event, '<?php echo esc_attr($post_id); ?>', '<?php echo esc_attr($comment['coid']); ?>', <?php echo esc_attr(wp_json_encode($comment['author'], JSON_UNESCAPED_UNICODE)); ?>)"><?php echo esc_html($comment['text']); ?></span>
+            <?php timellow_render_comment_delete_button($post_id, $comment['coid']); ?>
         </div>
         <?php
 
@@ -1427,6 +1440,7 @@ function timellow_render_comment_items($post_id, $limit = 5)
                 <span>:</span>
                 <span class="cursor-help pcc-comment-content"
                       @click="showReplyForm($event, '<?php echo esc_attr($post_id); ?>', '<?php echo esc_attr($reply['coid']); ?>', <?php echo esc_attr(wp_json_encode($reply['author'], JSON_UNESCAPED_UNICODE)); ?>)"><?php echo esc_html($reply['text']); ?></span>
+                <?php timellow_render_comment_delete_button($post_id, $reply['coid']); ?>
             </div>
             <?php
         }
@@ -1448,22 +1462,28 @@ function timellow_render_post_action_block($post_id, $detail = false, $comment_l
                 </svg>
             </div>
             <div class="post-time-comment-modal" x-show="ptcmShow" x-transition.in.duration.300ms.origin.top.right>
-                <div class="ptcm-good like-menu-btn" data-cid="<?php echo (int) $post_id; ?>" @click="toggleLike($event, <?php echo (int) $post_id; ?>)">
+                <button type="button" class="ptcm-action ptcm-good like-menu-btn" data-cid="<?php echo (int) $post_id; ?>" @click="toggleLike($event, <?php echo (int) $post_id; ?>)">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" height="16" width="16"
                          stroke-width="1.5" stroke="currentColor" class="size-6 like-menu-icon">
                         <path stroke-linecap="round" stroke-linejoin="round"
                               d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z"/>
                     </svg>
                     <span class="like-menu-text">点赞</span>
-                </div>
-                <div class="ptcm-comment" @click="showPostReplyForm($event, <?php echo (int) $post_id; ?>)">
+                </button>
+                <button type="button" class="ptcm-action ptcm-comment" @click="showPostReplyForm($event, <?php echo (int) $post_id; ?>)">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" height="16" width="16"
                          stroke-width="1.5" stroke="currentColor" class="size-6">
                         <path stroke-linecap="round" stroke-linejoin="round"
                               d="M2.25 12.76c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z"/>
                     </svg>
                     评论
-                </div>
+                </button>
+                <?php if (timellow_user_is_administrator() && current_user_can('edit_post', $post_id)) : ?>
+                    <button type="button" class="ptcm-action ptcm-edit" @click.stop="editPost($event, <?php echo (int) $post_id; ?>)">编辑</button>
+                <?php endif; ?>
+                <?php if (timellow_user_is_administrator() && current_user_can('delete_post', $post_id)) : ?>
+                    <button type="button" class="ptcm-action ptcm-delete" @click.stop="deletePost($event, <?php echo (int) $post_id; ?>)">删除</button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -1871,6 +1891,171 @@ function timellow_user_can_sticky_posts($post_type = 'post')
     return current_user_can($post_type_object->cap->edit_others_posts);
 }
 
+function timellow_user_is_administrator()
+{
+    return is_user_logged_in() && current_user_can('manage_options');
+}
+
+function timellow_verify_rest_nonce(WP_REST_Request $request)
+{
+    $nonce = (string) $request->get_header('X-WP-Nonce');
+
+    if ($nonce === '') {
+        $nonce = (string) $request->get_param('_wpnonce');
+    }
+
+    return $nonce !== '' && wp_verify_nonce($nonce, 'wp_rest');
+}
+
+function timellow_user_can_manage_frontend_post($post_id)
+{
+    $post = get_post($post_id);
+
+    if (!$post || $post->post_type !== 'post' || !timellow_user_is_administrator()) {
+        return false;
+    }
+
+    return current_user_can('edit_post', $post_id);
+}
+
+function timellow_resolve_attachment_id_from_url($url)
+{
+    $url = esc_url_raw((string) $url);
+
+    if ($url === '') {
+        return 0;
+    }
+
+    $attachment_id = attachment_url_to_postid($url);
+
+    if ($attachment_id > 0) {
+        return (int) $attachment_id;
+    }
+
+    $file_name = wp_basename((string) wp_parse_url($url, PHP_URL_PATH));
+
+    if ($file_name === '') {
+        return 0;
+    }
+
+    $attachments = get_posts(
+        array(
+            'post_type' => 'attachment',
+            'post_status' => 'inherit',
+            'posts_per_page' => 1,
+            'fields' => 'ids',
+            'meta_query' => array(
+                array(
+                    'key' => '_wp_attached_file',
+                    'value' => $file_name,
+                    'compare' => 'LIKE',
+                ),
+            ),
+        )
+    );
+
+    if (empty($attachments[0])) {
+        return 0;
+    }
+
+    return (int) $attachments[0];
+}
+
+function timellow_extract_frontend_post_text($content)
+{
+    $content = (string) $content;
+
+    if ($content === '') {
+        return '';
+    }
+
+    $content = preg_replace('/<p>\s*(?:<video\b[^>]*>.*?<\/video>|<img\b[^>]*>)\s*<\/p>/is', '', $content);
+    $content = preg_replace('/<video\b[^>]*>.*?<\/video>/is', '', $content);
+    $content = preg_replace('/<img\b[^>]*>/i', '', $content);
+    $content = preg_replace('/<\/p>\s*<p>/i', "\n\n", $content);
+    $content = preg_replace('/<br\s*\/?>/i', "\n", $content);
+
+    $text = html_entity_decode(wp_strip_all_tags($content), ENT_QUOTES, get_bloginfo('charset'));
+    $text = preg_replace("/\r\n?/", "\n", $text);
+    $text = preg_replace("/\n{3,}/", "\n\n", $text);
+
+    return trim($text);
+}
+
+function timellow_get_frontend_post_media_payload($post_id)
+{
+    $post = get_post($post_id);
+
+    if (!$post) {
+        return array();
+    }
+
+    $items = array();
+    $video_src = timellow_extract_video_src($post->post_content);
+
+    if ($video_src) {
+        $attachment_id = timellow_resolve_attachment_id_from_url($video_src);
+
+        if ($attachment_id > 0) {
+            $attachment_url = wp_get_attachment_url($attachment_id);
+
+            if ($attachment_url) {
+                $items[] = array(
+                    'id' => (int) $attachment_id,
+                    'mediaType' => 'video',
+                    'type' => (string) get_post_mime_type($attachment_id),
+                    'url' => esc_url_raw($attachment_url),
+                    'preview' => esc_url_raw($attachment_url),
+                );
+            }
+        }
+    }
+
+    foreach (timellow_extract_image_srcs($post->post_content) as $image_src) {
+        $attachment_id = timellow_resolve_attachment_id_from_url($image_src);
+
+        if ($attachment_id <= 0) {
+            continue;
+        }
+
+        $attachment_url = wp_get_attachment_url($attachment_id);
+
+        if (!$attachment_url) {
+            continue;
+        }
+
+        $preview_url = wp_get_attachment_image_url($attachment_id, 'medium');
+        $items[] = array(
+            'id' => (int) $attachment_id,
+            'mediaType' => 'image',
+            'type' => (string) get_post_mime_type($attachment_id),
+            'url' => esc_url_raw($attachment_url),
+            'preview' => esc_url_raw($preview_url ? $preview_url : $attachment_url),
+        );
+    }
+
+    return $items;
+}
+
+function timellow_prepare_frontend_post_editor_payload($post_id)
+{
+    $post = get_post($post_id);
+
+    if (!$post || $post->post_type !== 'post') {
+        return array();
+    }
+
+    return array(
+        'postId' => (int) $post_id,
+        'content' => timellow_extract_frontend_post_text($post->post_content),
+        'position' => timellow_get_post_position($post_id),
+        'visibility' => $post->post_status === 'private' ? 'private' : 'public',
+        'isAdvertise' => timellow_is_post_ad($post_id),
+        'isSticky' => is_sticky($post_id),
+        'mediaFiles' => timellow_get_frontend_post_media_payload($post_id),
+    );
+}
+
 function timellow_collect_frontend_media_files($file_params)
 {
     $media_files = array();
@@ -2198,6 +2383,284 @@ function timellow_get_frontend_post_success_message($status)
     }
 }
 
+function timellow_handle_get_post_editor_data(WP_REST_Request $request)
+{
+    $post_id = absint($request->get_param('postId'));
+
+    if (!timellow_verify_rest_nonce($request)) {
+        return array(
+            'success' => false,
+            'message' => '请求已过期，请刷新页面后重试',
+        );
+    }
+
+    if (!timellow_user_can_manage_frontend_post($post_id)) {
+        return array(
+            'success' => false,
+            'message' => '没有权限编辑这篇文章',
+        );
+    }
+
+    $payload = timellow_prepare_frontend_post_editor_payload($post_id);
+
+    if (empty($payload)) {
+        return array(
+            'success' => false,
+            'message' => '文章不存在或已被删除',
+        );
+    }
+
+    return array(
+        'success' => true,
+        'post' => $payload,
+    );
+}
+
+function timellow_handle_update_post(WP_REST_Request $request)
+{
+    $post_id = absint($request->get_param('postId'));
+
+    if (!timellow_verify_rest_nonce($request)) {
+        return array(
+            'success' => false,
+            'message' => '请求已过期，请刷新页面后重试',
+        );
+    }
+
+    if (!timellow_user_can_manage_frontend_post($post_id)) {
+        return array(
+            'success' => false,
+            'message' => '没有权限编辑这篇文章',
+        );
+    }
+
+    $content = sanitize_textarea_field((string) $request->get_param('content'));
+    $position = timellow_normalize_position_label((string) $request->get_param('position'));
+    $position_url = esc_url_raw((string) $request->get_param('positionUrl'));
+    $visibility = sanitize_key((string) $request->get_param('visibility'));
+    $is_advertise = (string) $request->get_param('isAdvertise') === '1' ? '1' : '0';
+    $is_sticky = (string) $request->get_param('isSticky') === '1' && timellow_user_can_sticky_posts('post');
+    $attachment_ids = timellow_collect_frontend_attachment_ids($request);
+    $media_files = timellow_collect_frontend_media_files($request->get_file_params());
+    $return_url = esc_url_raw((string) $request->get_param('returnUrl'));
+
+    if ($content === '' && empty($media_files) && empty($attachment_ids)) {
+        return array(
+            'success' => false,
+            'message' => '请输入内容或选择图片/视频',
+        );
+    }
+
+    $status = timellow_resolve_frontend_post_status($visibility === 'private' ? 'private' : 'public');
+
+    if (is_wp_error($status)) {
+        return array(
+            'success' => false,
+            'message' => $status->get_error_message(),
+        );
+    }
+
+    if (!empty($attachment_ids)) {
+        $media = timellow_prepare_frontend_library_media($attachment_ids);
+    } elseif (!empty($media_files)) {
+        $media = timellow_upload_frontend_media($media_files, $post_id);
+    } else {
+        $media = array(
+            'images' => array(),
+            'video' => null,
+            'attachment_ids' => array(),
+            'cleanup_attachment_ids' => array(),
+        );
+    }
+
+    if (is_wp_error($media)) {
+        return array(
+            'success' => false,
+            'message' => $media->get_error_message(),
+        );
+    }
+
+    $title = timellow_generate_frontend_post_title($content);
+    $post_content = timellow_build_frontend_post_content($content, $media);
+    $updated_post = wp_update_post(
+        array(
+            'ID' => $post_id,
+            'post_status' => $status,
+            'post_title' => $title,
+            'post_content' => $post_content,
+        ),
+        true
+    );
+
+    if (is_wp_error($updated_post)) {
+        timellow_cleanup_uploaded_attachments($media['cleanup_attachment_ids']);
+
+        return array(
+            'success' => false,
+            'message' => $updated_post->get_error_message(),
+        );
+    }
+
+    update_post_meta($post_id, '_timellow_position', $position);
+    update_post_meta($post_id, '_timellow_position_url', $position_url);
+    update_post_meta($post_id, '_timellow_is_advertise', $is_advertise);
+    timellow_attach_media_to_post($media['attachment_ids'], $post_id);
+
+    if ($status === 'publish' && $is_sticky) {
+        stick_post($post_id);
+    } else {
+        unstick_post($post_id);
+    }
+
+    if (!empty($media['images'][0]['id'])) {
+        set_post_thumbnail($post_id, (int) $media['images'][0]['id']);
+    } else {
+        delete_post_thumbnail($post_id);
+    }
+
+    $redirect = $return_url !== '' ? $return_url : home_url('/');
+
+    if ($status === 'private') {
+        $private_url = get_permalink($post_id);
+
+        if ($private_url) {
+            $redirect = $private_url;
+        }
+    }
+
+    return array(
+        'success' => true,
+        'message' => '文章已更新',
+        'postId' => $post_id,
+        'status' => $status,
+        'redirect' => esc_url_raw($redirect),
+    );
+}
+
+function timellow_collect_comment_thread_ids($post_id, $comment_id)
+{
+    $comment_id = (int) $comment_id;
+    $post_id = (int) $post_id;
+
+    if ($post_id <= 0 || $comment_id <= 0) {
+        return array();
+    }
+
+    $comments = get_comments(
+        array(
+            'post_id' => $post_id,
+            'status' => 'all',
+            'orderby' => 'comment_ID',
+            'order' => 'ASC',
+        )
+    );
+
+    if (empty($comments)) {
+        return array($comment_id);
+    }
+
+    $children_map = array();
+
+    foreach ($comments as $comment) {
+        $parent_id = (int) $comment->comment_parent;
+
+        if (!isset($children_map[$parent_id])) {
+            $children_map[$parent_id] = array();
+        }
+
+        $children_map[$parent_id][] = (int) $comment->comment_ID;
+    }
+
+    $stack = array($comment_id);
+    $thread_ids = array();
+
+    while (!empty($stack)) {
+        $current = array_pop($stack);
+        $thread_ids[] = $current;
+
+        if (empty($children_map[$current])) {
+            continue;
+        }
+
+        foreach (array_reverse($children_map[$current]) as $child_id) {
+            $stack[] = (int) $child_id;
+        }
+    }
+
+    return array_values(array_unique(array_map('absint', $thread_ids)));
+}
+
+function timellow_handle_delete_comment(WP_REST_Request $request)
+{
+    $payload = $request->get_json_params();
+    $comment_id = is_array($payload) && isset($payload['commentId']) ? absint($payload['commentId']) : absint($request->get_param('commentId'));
+    $comment = get_comment($comment_id);
+
+    if (!timellow_verify_rest_nonce($request)) {
+        return array(
+            'success' => false,
+            'message' => '请求已过期，请刷新页面后重试',
+        );
+    }
+
+    if (!$comment || !timellow_user_is_administrator() || !current_user_can('moderate_comments')) {
+        return array(
+            'success' => false,
+            'message' => '没有权限删除这条评论',
+        );
+    }
+
+    $deleted_ids = timellow_collect_comment_thread_ids((int) $comment->comment_post_ID, $comment_id);
+
+    if (!wp_delete_comment($comment_id, true)) {
+        return array(
+            'success' => false,
+            'message' => '评论删除失败，请稍后重试',
+        );
+    }
+
+    return array(
+        'success' => true,
+        'message' => '评论已删除',
+        'postId' => (int) $comment->comment_post_ID,
+        'deletedIds' => $deleted_ids,
+    );
+}
+
+function timellow_handle_delete_post(WP_REST_Request $request)
+{
+    $payload = $request->get_json_params();
+    $post_id = is_array($payload) && isset($payload['postId']) ? absint($payload['postId']) : absint($request->get_param('postId'));
+
+    if (!timellow_verify_rest_nonce($request)) {
+        return array(
+            'success' => false,
+            'message' => '请求已过期，请刷新页面后重试',
+        );
+    }
+
+    if (!timellow_user_can_manage_frontend_post($post_id) || !current_user_can('delete_post', $post_id)) {
+        return array(
+            'success' => false,
+            'message' => '没有权限删除这篇文章',
+        );
+    }
+
+    if (!wp_delete_post($post_id, true)) {
+        return array(
+            'success' => false,
+            'message' => '文章删除失败，请稍后重试',
+        );
+    }
+
+    return array(
+        'success' => true,
+        'message' => '文章已删除',
+        'postId' => $post_id,
+        'redirect' => esc_url_raw(home_url('/')),
+    );
+}
+
 function timellow_handle_create_post(WP_REST_Request $request)
 {
     if (!timellow_user_can_frontend_post()) {
@@ -2457,6 +2920,18 @@ function timellow_rest_action_handler(WP_REST_Request $request)
 
         case 'createpost':
             return rest_ensure_response(timellow_handle_create_post($request));
+
+        case 'getposteditordata':
+            return rest_ensure_response(timellow_handle_get_post_editor_data($request));
+
+        case 'updatepost':
+            return rest_ensure_response(timellow_handle_update_post($request));
+
+        case 'deletepost':
+            return rest_ensure_response(timellow_handle_delete_post($request));
+
+        case 'deletecomment':
+            return rest_ensure_response(timellow_handle_delete_comment($request));
 
         case 'getfriendlinks':
             return rest_ensure_response(timellow_handle_friend_links());

@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 function timellowWriteModalManager() {
     return {
         writeModalShow: false,
+        editingPostId: 0,
         postContent: '',
         mediaFiles: [],
         position: '',
@@ -19,6 +20,22 @@ function timellowWriteModalManager() {
         submitStatus: '',
         submitting: false,
 
+        get isEditing() {
+            return this.editingPostId > 0;
+        },
+
+        get modalTitle() {
+            return this.isEditing ? '编辑文章' : '撰写';
+        },
+
+        get submitButtonText() {
+            if (this.submitting) {
+                return this.isEditing ? '保存中...' : '发布中...';
+            }
+
+            return this.isEditing ? '保存' : '发表';
+        },
+
         get visibilityText() {
             return this.visibility === 'private' ? '私密' : '公开';
         },
@@ -27,7 +44,13 @@ function timellowWriteModalManager() {
             return this.mediaFiles.some((item) => item.mediaType === 'video');
         },
 
-        open() {
+        open(payload = null) {
+            this.resetForm();
+
+            if (payload && payload.mode === 'edit' && payload.post) {
+                this.applyEditorPost(payload.post);
+            }
+
             this.writeModalShow = true;
 
             setTimeout(() => {
@@ -50,6 +73,7 @@ function timellowWriteModalManager() {
         },
 
         resetForm() {
+            this.editingPostId = 0;
             this.postContent = '';
             this.mediaFiles = [];
             this.position = '';
@@ -63,6 +87,26 @@ function timellowWriteModalManager() {
             if (this.$refs.postContent) {
                 this.$refs.postContent.style.height = 'auto';
             }
+        },
+
+        applyEditorPost(post) {
+            this.editingPostId = parseInt(post.postId, 10) || 0;
+            this.postContent = typeof post.content === 'string' ? post.content : '';
+            this.position = typeof post.position === 'string' ? post.position : '';
+            this.visibility = post.visibility === 'private' ? 'private' : 'public';
+            this.isAdvertise = !!post.isAdvertise;
+            this.isSticky = this.visibility === 'public' && !!post.isSticky;
+            this.mediaFiles = Array.isArray(post.mediaFiles)
+                ? post.mediaFiles
+                    .map((item) => ({
+                        id: parseInt(item.id, 10) || 0,
+                        mediaType: item.mediaType === 'video' ? 'video' : 'image',
+                        type: item.type || '',
+                        url: item.url || '',
+                        preview: item.preview || item.url || ''
+                    }))
+                    .filter((item) => item.id > 0 && item.url)
+                : [];
         },
 
         autoResize(event) {
@@ -530,7 +574,7 @@ function timellowWriteModalManager() {
                 return;
             }
 
-            this.submitStatus = '发布中...';
+            this.submitStatus = this.isEditing ? '保存中...' : '发布中...';
             this.submitting = true;
 
             try {
@@ -541,8 +585,14 @@ function timellowWriteModalManager() {
                 formData.append('isAdvertise', this.isAdvertise ? '1' : '0');
                 formData.append('isSticky', this.visibility === 'public' && this.isSticky ? '1' : '0');
                 formData.append('attachment_ids', JSON.stringify(this.mediaFiles.map((media) => media.id).filter(Boolean)));
+                formData.append('returnUrl', window.location.href);
 
-                const response = await fetch(`${window.TIMELLOW_CONFIG.actionUrl}?do=createPost`, {
+                if (this.isEditing) {
+                    formData.append('postId', String(this.editingPostId));
+                }
+
+                const action = this.isEditing ? 'updatePost' : 'createPost';
+                const response = await fetch(`${window.TIMELLOW_CONFIG.actionUrl}?do=${action}`, {
                     method: 'POST',
                     headers: {
                         'X-WP-Nonce': window.TIMELLOW_CONFIG.restNonce || ''
@@ -554,7 +604,7 @@ function timellowWriteModalManager() {
                 const result = await response.json();
 
                 if (result.success) {
-                    this.submitStatus = result.message || '发布成功';
+                    this.submitStatus = result.message || (this.isEditing ? '保存成功' : '发布成功');
 
                     setTimeout(() => {
                         window.location.href = result.redirect || window.location.href;
@@ -581,14 +631,14 @@ function timellowWriteModalManager() {
      x-transition.opacity.duration.300ms
      @click.self="close()"
      @keydown.escape.window="if (writeModalShow) close()"
-     @write-modal-open.window="open()">
+     @write-modal-open.window="open($event.detail || null)">
     <div class="write-container" x-transition.scale.duration.300ms>
         <div class="write-modal-header">
-            <div class="write-modal-title">撰写</div>
+            <div class="write-modal-title" x-text="modalTitle"></div>
             <div class="write-modal-actions">
                 <?php if (current_user_can('edit_posts')) : ?>
                     <button type="button" class="write-publish-btn" :disabled="submitting" @click="submitPost()">
-                        <span x-text="submitting ? '发布中...' : '发表'"></span>
+                        <span x-text="submitButtonText"></span>
                     </button>
                 <?php endif; ?>
                 <button type="button" class="write-modal-close" @click="close()">×</button>
