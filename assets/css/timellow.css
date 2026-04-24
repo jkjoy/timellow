@@ -75,6 +75,19 @@ body {
     -ms-overflow-style: none; /* IE和Edge */
 }
 
+/* WordPress 标签归档页会给 body 注入 .tag，需覆盖 Bulma 的 .tag 胶囊样式污染。 */
+body.archive.tag {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: normal;
+    width: 100%;
+    padding: 0;
+    border-radius: 0;
+    height: auto;
+    white-space: normal;
+}
+
 /* 隐藏滚动条 */
 ::-webkit-scrollbar {
     display: none;
@@ -464,12 +477,18 @@ main {
 }
 
 .ptc-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     padding: 2px 5px;
     height: 18px;
     width: 26px;
+    box-sizing: border-box;
+    line-height: 0;
 }
 
 .ptc-more svg {
+    display: block;
     height: 16px;
     width: 16px;
 }
@@ -1853,6 +1872,11 @@ main {
 .archive-title::before {
     content: '📋';
     font-size: 24px;
+}
+
+body.search-results .scrollload-content > .post-item:first-child,
+body.archive.tag .scrollload-content > .post-item:first-child {
+    margin-top: 20px;
 }
 
 .archive-empty {
