@@ -14,6 +14,7 @@ function timellow_get_default_options()
     return array(
         'top_video' => 0,
         'top_image' => 0,
+        'avatar_image' => 0,
         'avatar_link' => '',
         'avatar_mirror' => '',
         'tencent_map_key' => '',
@@ -399,6 +400,11 @@ function timellow_register_customizer($wp_customize)
     $media_fields = array(
         'top_video' => array('label' => '顶部背景视频', 'mime_type' => 'video'),
         'top_image' => array('label' => '顶部背景图片', 'mime_type' => 'image'),
+        'avatar_image' => array(
+            'label' => '头像设置',
+            'mime_type' => 'image',
+            'description' => '优先使用这里设置的头像；未设置时回退为 Gravatar 头像。',
+        ),
     );
 
     foreach ($media_fields as $key => $field) {
@@ -418,6 +424,7 @@ function timellow_register_customizer($wp_customize)
                     'section' => 'timellow_theme_options',
                     'label' => $field['label'],
                     'mime_type' => $field['mime_type'],
+                    'description' => isset($field['description']) ? $field['description'] : '',
                 )
             )
         );
@@ -593,6 +600,11 @@ function timellow_escape_img_src($url)
     return esc_url($url, array('http', 'https'));
 }
 
+function timellow_get_theme_avatar_url()
+{
+    return timellow_get_media_url('avatar_image');
+}
+
 function timellow_apply_avatar_mirror($avatar_url)
 {
     $avatar_url = esc_url_raw((string) $avatar_url);
@@ -665,6 +677,12 @@ function timellow_apply_avatar_mirror($avatar_url)
 
 function timellow_get_wp_avatar_url($email, $size = 64)
 {
+    $theme_avatar_url = timellow_get_theme_avatar_url();
+
+    if ($theme_avatar_url !== '') {
+        return $theme_avatar_url;
+    }
+
     return timellow_apply_avatar_mirror(
         get_avatar_url(
             $email,
