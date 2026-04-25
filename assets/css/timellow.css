@@ -529,13 +529,19 @@ main {
     display: flex;
     justify-content: center;
     align-items: center;
-    flex: 1 1 0;
+    flex: 0 0 auto;
     min-width: 52px;
     padding: 0 12px;
     cursor: pointer;
     height: 24px;
     gap: 5px;
     transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.ptcm-action svg {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
 }
 
 .ptcm-action + .ptcm-action {
