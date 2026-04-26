@@ -3,11 +3,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('TIMELLOW_THEME_VERSION', '1.0.8');
+define('TIMELLOW_THEME_VERSION', '1.0.9');
 define('TIMELLOW_DB_VERSION', '1.0.0');
 define('TIMELLOW_THEME_UPDATE_REPO', 'jkjoy/timellow');
 define('TIMELLOW_THEME_UPDATE_CACHE_KEY', 'timellow_theme_update_release');
 define('TIMELLOW_THEME_UPDATE_ZIP_ASSET', 'timellow.zip');
+define('TIMELLOW_SHUOSHUO_POST_TYPE', 'shuoshuo');
 
 function timellow_get_default_options()
 {
@@ -286,6 +287,70 @@ function timellow_setup_theme()
     );
 }
 add_action('after_setup_theme', 'timellow_setup_theme');
+
+function timellow_register_shuoshuo_post_type()
+{
+    register_post_type(
+        TIMELLOW_SHUOSHUO_POST_TYPE,
+        array(
+            'labels' => array(
+                'name' => '说说',
+                'singular_name' => '说说',
+                'menu_name' => '说说',
+                'name_admin_bar' => '说说',
+                'add_new' => '写说说',
+                'add_new_item' => '写说说',
+                'edit_item' => '编辑说说',
+                'new_item' => '新说说',
+                'view_item' => '查看说说',
+                'search_items' => '搜索说说',
+                'not_found' => '暂无说说',
+                'not_found_in_trash' => '回收站中暂无说说',
+                'all_items' => '全部说说',
+            ),
+            'public' => true,
+            'show_ui' => true,
+            'show_in_menu' => true,
+            'menu_icon' => 'dashicons-format-status',
+            'menu_position' => 5,
+            'capability_type' => 'post',
+            'map_meta_cap' => true,
+            'supports' => array('title', 'editor', 'author', 'thumbnail', 'comments', 'revisions'),
+            'has_archive' => true,
+            'rewrite' => array(
+                'slug' => 'shuoshuo',
+                'with_front' => false,
+            ),
+            'show_in_rest' => false,
+        )
+    );
+}
+add_action('init', 'timellow_register_shuoshuo_post_type');
+
+function timellow_maybe_flush_shuoshuo_rewrite_rules()
+{
+    $rewrite_version = '1';
+
+    if (get_option('timellow_shuoshuo_rewrite_version') === $rewrite_version) {
+        return;
+    }
+
+    flush_rewrite_rules(false);
+    update_option('timellow_shuoshuo_rewrite_version', $rewrite_version);
+}
+add_action('init', 'timellow_maybe_flush_shuoshuo_rewrite_rules', 20);
+
+function timellow_include_shuoshuo_in_main_query($query)
+{
+    if (is_admin() || !$query->is_main_query()) {
+        return;
+    }
+
+    if ($query->is_home() || $query->is_search() || $query->is_author()) {
+        $query->set('post_type', array('post', TIMELLOW_SHUOSHUO_POST_TYPE));
+    }
+}
+add_action('pre_get_posts', 'timellow_include_shuoshuo_in_main_query');
 
 add_filter('pre_option_link_manager_enabled', '__return_true');
 add_filter('use_block_editor_for_post', '__return_false', 100);
@@ -626,9 +691,9 @@ function timellow_register_post_meta_box()
 {
     add_meta_box(
         'timellow-post-meta',
-        '文章设置',
+        '内容设置',
         'timellow_render_post_meta_box',
-        array('post', 'page'),
+        array('post', TIMELLOW_SHUOSHUO_POST_TYPE, 'page'),
         'normal',
         'default'
     );
@@ -642,6 +707,7 @@ function timellow_render_post_meta_box($post)
     $position = timellow_get_post_position($post->ID);
     $position_url = get_post_meta($post->ID, '_timellow_position_url', true);
     $is_advertise = get_post_meta($post->ID, '_timellow_is_advertise', true);
+    $can_sticky_shuoshuo = $post->post_type === TIMELLOW_SHUOSHUO_POST_TYPE && timellow_user_can_sticky_posts(TIMELLOW_SHUOSHUO_POST_TYPE);
     ?>
     <p>
         <label for="timellow_position"><strong>发布定位</strong></label>
@@ -657,6 +723,14 @@ function timellow_render_post_meta_box($post)
             标记为广告
         </label>
     </p>
+    <?php if ($can_sticky_shuoshuo) : ?>
+        <p>
+            <label>
+                <input type="checkbox" name="timellow_is_sticky" value="1" <?php checked(is_sticky($post->ID)); ?>>
+                说说置顶
+            </label>
+        </p>
+    <?php endif; ?>
     <?php
 }
 
@@ -684,6 +758,16 @@ function timellow_save_post_meta($post_id)
     update_post_meta($post_id, '_timellow_position', $position);
     update_post_meta($post_id, '_timellow_position_url', $position_url);
     update_post_meta($post_id, '_timellow_is_advertise', $is_advertise);
+
+    if (get_post_type($post_id) === TIMELLOW_SHUOSHUO_POST_TYPE && timellow_user_can_sticky_posts(TIMELLOW_SHUOSHUO_POST_TYPE)) {
+        $is_sticky = isset($_POST['timellow_is_sticky']);
+
+        if (get_post_status($post_id) === 'publish' && $is_sticky) {
+            stick_post($post_id);
+        } else {
+            unstick_post($post_id);
+        }
+    }
 }
 add_action('save_post', 'timellow_save_post_meta');
 
@@ -1480,7 +1564,14 @@ function timellow_render_comment_items($post_id, $limit = 5)
 
 function timellow_render_post_action_block($post_id, $detail = false, $comment_limit = 5)
 {
+    $post = get_post($post_id);
+    $post_type = $post ? $post->post_type : '';
     $datetime = $detail ? get_the_date('Y年m月d日', $post_id) : timellow_format_comment_time(get_post_time('U', true, $post_id));
+    $can_manage_frontend_post = timellow_user_can_manage_frontend_post($post_id);
+    $can_edit_article_in_admin = $post_type === 'post' && current_user_can('edit_post', $post_id);
+    $can_delete_feed_post = timellow_user_can_delete_feed_post($post_id);
+    $article_edit_url = $can_edit_article_in_admin ? get_edit_post_link($post_id, 'raw') : '';
+    $delete_label = $post_type === 'post' ? '文章' : '说说';
     ?>
     <div class="post-time">
         <time datetime="<?php echo esc_attr(get_the_date('Y年m月d日', $post_id)); ?>"><?php echo esc_html($datetime); ?></time>
@@ -1509,11 +1600,13 @@ function timellow_render_post_action_block($post_id, $detail = false, $comment_l
                     </svg>
                     评论
                 </button>
-                <?php if (timellow_user_is_administrator() && current_user_can('edit_post', $post_id)) : ?>
+                <?php if ($can_manage_frontend_post && current_user_can('edit_post', $post_id)) : ?>
                     <button type="button" class="ptcm-action ptcm-edit" @click.stop="editPost($event, <?php echo (int) $post_id; ?>)">编辑</button>
+                <?php elseif ($article_edit_url) : ?>
+                    <a class="ptcm-action ptcm-edit" href="<?php echo esc_url($article_edit_url); ?>" @click.stop>编辑</a>
                 <?php endif; ?>
-                <?php if (timellow_user_is_administrator() && current_user_can('delete_post', $post_id)) : ?>
-                    <button type="button" class="ptcm-action ptcm-delete" @click.stop="deletePost($event, <?php echo (int) $post_id; ?>)">删除</button>
+                <?php if ($can_delete_feed_post) : ?>
+                    <button type="button" class="ptcm-action ptcm-delete" @click.stop="deletePost($event, <?php echo (int) $post_id; ?>, '<?php echo esc_js($delete_label); ?>')">删除</button>
                 <?php endif; ?>
             </div>
         </div>
@@ -1532,6 +1625,107 @@ function timellow_render_post_action_block($post_id, $detail = false, $comment_l
         <div class="pcc-comment-list">
             <?php timellow_render_comment_items($post_id, $comment_limit); ?>
         </div>
+    </div>
+    <?php
+}
+
+function timellow_get_article_share_image_url($post_id)
+{
+    $thumbnail_url = get_the_post_thumbnail_url($post_id, 'thumbnail');
+
+    if ($thumbnail_url) {
+        return $thumbnail_url;
+    }
+
+    $content_images = timellow_extract_image_srcs((string) get_post_field('post_content', $post_id));
+
+    if (!empty($content_images[0])) {
+        return $content_images[0];
+    }
+
+    $site_icon_url = get_site_icon_url(96);
+
+    if ($site_icon_url) {
+        return $site_icon_url;
+    }
+
+    $site_avatar = timellow_get_site_avatar_data(96);
+
+    if (!empty($site_avatar['url'])) {
+        return $site_avatar['url'];
+    }
+
+    return get_template_directory_uri() . '/assets/images/default-avatar.svg';
+}
+
+function timellow_get_article_share_terms($post_id, $limit = 3)
+{
+    $terms = get_the_category($post_id);
+
+    if (empty($terms) || is_wp_error($terms)) {
+        $terms = get_the_tags($post_id);
+    }
+
+    if (empty($terms) || is_wp_error($terms)) {
+        return array();
+    }
+
+    $items = array();
+
+    foreach ($terms as $term) {
+        if (count($items) >= $limit) {
+            break;
+        }
+
+        $term_link = get_term_link($term);
+
+        $items[] = array(
+            'name' => $term->name,
+            'url' => is_wp_error($term_link) ? '' : $term_link,
+        );
+    }
+
+    return $items;
+}
+
+function timellow_render_article_share_content($post)
+{
+    $post = get_post($post);
+
+    if (!$post) {
+        return;
+    }
+
+    $permalink = get_permalink($post);
+    $title = get_the_title($post);
+    $image_url = timellow_get_article_share_image_url($post->ID);
+    $terms = timellow_get_article_share_terms($post->ID);
+
+    if ($title === '') {
+        $title = '未命名文章';
+    }
+    ?>
+    <div class="post-content article-share-content">
+        <div class="article-share-update">分享了一篇文章</div>
+
+        <?php if (!empty($terms)) : ?>
+            <!--<div class="article-share-tags">
+                <?php foreach ($terms as $term) : ?>
+                    <?php if (!empty($term['url'])) : ?>
+                        <a class="article-share-tag" href="<?php echo esc_url($term['url']); ?>"><?php echo esc_html($term['name']); ?></a>
+                    <?php else : ?>
+                        <span class="article-share-tag"><?php echo esc_html($term['name']); ?></span>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </div>-->
+        <?php endif; ?>
+
+        <a class="article-share-card" href="<?php echo esc_url($permalink); ?>">
+            <span class="article-share-thumb">
+                <img src="<?php echo timellow_escape_img_src($image_url); ?>" alt="">
+            </span>
+            <span class="article-share-card-title"><?php echo esc_html($title); ?></span>
+        </a>
     </div>
     <?php
 }
@@ -1563,8 +1757,9 @@ function timellow_render_post_article($post = null, $args = array())
     $auto_collapse = timellow_get_option('auto_collapse') !== '0';
     $video_src = timellow_extract_video_src($post->post_content);
     $images = $video_src ? array() : timellow_extract_image_srcs($post->post_content);
+    $is_article_share = !$args['detail'] && !$args['page'] && $post->post_type === 'post';
     ?>
-    <article class="post-item<?php echo $args['detail'] ? ' post-detail-item' : ''; ?>">
+    <article class="post-item post-type-<?php echo esc_attr($post->post_type); ?><?php echo $args['detail'] ? ' post-detail-item' : ''; ?>">
         <div class="post-item-left">
             <a href="<?php echo esc_url($author_url); ?>">
                 <img alt="<?php echo esc_attr($author_name); ?>" src="<?php echo timellow_escape_img_src($avatar_url); ?>">
@@ -1585,47 +1780,53 @@ function timellow_render_post_article($post = null, $args = array())
                 <?php endif; ?>
             </h2>
 
-            <div class="post-content">
-                <?php if ($args['detail']) : ?>
-                    <?php echo timellow_get_post_rendered_content($post); ?>
-                <?php else : ?>
-                    <?php
-                    if ($auto_collapse) {
-                        if ($content_with_summary['is_truncated']) {
-                            echo '<div class="summary-' . esc_attr($post->ID) . '">' . $content_with_summary['summary'] . '<span class="show_all_btn cursor-pointer" data-cid="' . esc_attr($post->ID) . '">全文</span></div>';
-                            echo '<div class="hidden full_content-' . esc_attr($post->ID) . '">' . $content_with_summary['full_content'] . '<div><span class="hide_all_btn cursor-pointer" data-cid="' . esc_attr($post->ID) . '">收起</span></div></div>';
-                        } else {
-                            echo '<div>' . $content_with_summary['full_content'] . '</div>';
-                        }
+            <?php if ($is_article_share) : ?>
+                <?php timellow_render_article_share_content($post); ?>
+            <?php else : ?>
+                <div class="post-content">
+                    <?php if ($args['detail']) : ?>
+                        <?php echo timellow_get_post_rendered_content($post); ?>
+                    <?php else : ?>
+                        <?php
+                        if ($auto_collapse) {
+                            if ($content_with_summary['is_truncated']) {
+                                echo '<div class="summary-' . esc_attr($post->ID) . '">' . $content_with_summary['summary'] . '<span class="show_all_btn cursor-pointer" data-cid="' . esc_attr($post->ID) . '">全文</span></div>';
+                                echo '<div class="hidden full_content-' . esc_attr($post->ID) . '">' . $content_with_summary['full_content'] . '<div><span class="hide_all_btn cursor-pointer" data-cid="' . esc_attr($post->ID) . '">收起</span></div></div>';
+                            } else {
+                                echo '<div>' . $content_with_summary['full_content'] . '</div>';
+                            }
 
-                        echo $music_html;
+                            echo $music_html;
+                        } else {
+                            echo '<div class="full-content-display">' . $content_with_summary['full_content'] . '</div>';
+                            echo $music_html;
+                        }
+                        ?>
+                    <?php endif; ?>
+                </div>
+
+                <?php if (!$args['detail']) : ?>
+                    <?php
+                    if ($video_src) {
+                        get_template_part('components/post/post-video', null, array(
+                            'video_url' => $video_src,
+                        ));
                     } else {
-                        echo '<div class="full-content-display">' . $content_with_summary['full_content'] . '</div>';
-                        echo $music_html;
+                        get_template_part('components/post/post-images', null, array(
+                            'images' => $images,
+                            'post_id' => $post->ID,
+                        ));
                     }
                     ?>
                 <?php endif; ?>
-            </div>
-
-            <?php if (!$args['detail']) : ?>
-                <?php
-                if ($video_src) {
-                    get_template_part('components/post/post-video', null, array(
-                        'video_url' => $video_src,
-                    ));
-                } else {
-                    get_template_part('components/post/post-images', null, array(
-                        'images' => $images,
-                        'post_id' => $post->ID,
-                    ));
-                }
-                ?>
             <?php endif; ?>
 
             <?php
-            get_template_part('components/post/post-position', null, array(
-                'post_id' => $post->ID,
-            ));
+            if (!$is_article_share) {
+                get_template_part('components/post/post-position', null, array(
+                    'post_id' => $post->ID,
+                ));
+            }
 
             timellow_render_post_action_block($post->ID, $args['detail'], (int) $args['comment_limit']);
             ?>
@@ -1651,12 +1852,16 @@ function timellow_render_pagination_state($query = null)
 
 function timellow_get_archive_heading()
 {
+    if (is_post_type_archive(TIMELLOW_SHUOSHUO_POST_TYPE)) {
+        return '说说';
+    }
+
     if (is_category()) {
         return sprintf('分类 %s 下的文章', single_cat_title('', false));
     }
 
     if (is_search()) {
-        return sprintf('包含关键字 %s 的文章', get_search_query());
+        return sprintf('包含关键字 %s 的内容', get_search_query());
     }
 
     if (is_tag()) {
@@ -1665,7 +1870,7 @@ function timellow_get_archive_heading()
 
     if (is_author()) {
         $author = get_queried_object();
-        return sprintf('%s 发布的文章', $author ? $author->display_name : '');
+        return sprintf('%s 发布的内容', $author ? $author->display_name : '');
     }
 
     $title = get_the_archive_title();
@@ -2077,11 +2282,26 @@ function timellow_user_can_manage_frontend_post($post_id)
 {
     $post = get_post($post_id);
 
-    if (!$post || $post->post_type !== 'post' || !timellow_user_is_administrator()) {
+    if (!$post || $post->post_type !== TIMELLOW_SHUOSHUO_POST_TYPE || !timellow_user_is_administrator()) {
         return false;
     }
 
     return current_user_can('edit_post', $post_id);
+}
+
+function timellow_user_can_delete_feed_post($post_id)
+{
+    $post = get_post($post_id);
+
+    if (!$post || !in_array($post->post_type, array('post', TIMELLOW_SHUOSHUO_POST_TYPE), true)) {
+        return false;
+    }
+
+    if ($post->post_type === TIMELLOW_SHUOSHUO_POST_TYPE && !timellow_user_is_administrator()) {
+        return false;
+    }
+
+    return current_user_can('delete_post', $post_id);
 }
 
 function timellow_resolve_attachment_id_from_url($url)
@@ -2207,7 +2427,7 @@ function timellow_prepare_frontend_post_editor_payload($post_id)
 {
     $post = get_post($post_id);
 
-    if (!$post || $post->post_type !== 'post') {
+    if (!$post || $post->post_type !== TIMELLOW_SHUOSHUO_POST_TYPE) {
         return array();
     }
 
@@ -2293,7 +2513,7 @@ function timellow_resolve_frontend_post_status($visibility)
 {
     if ($visibility === 'private') {
         if (!current_user_can('publish_posts') || !current_user_can('edit_private_posts')) {
-            return new WP_Error('timellow_private_forbidden', '当前账号无权发布私密内容');
+            return new WP_Error('timellow_private_forbidden', '当前账号无权发布私密说说');
         }
 
         return 'private';
@@ -2523,7 +2743,7 @@ function timellow_generate_frontend_post_title($text)
     $plain_text = trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags((string) $text)));
 
     if ($plain_text === '') {
-        return '动态 ' . wp_date('Y-m-d H:i');
+        return '说说 ' . wp_date('Y-m-d H:i');
     }
 
     $title = mb_substr($plain_text, 0, 30, 'UTF-8');
@@ -2539,10 +2759,10 @@ function timellow_get_frontend_post_success_message($status)
 {
     switch ($status) {
         case 'private':
-            return '已保存为私密内容';
+            return '已保存为私密说说';
 
         case 'pending':
-            return '内容已提交，等待审核';
+            return '说说已提交，等待审核';
 
         default:
             return '发布成功';
@@ -2563,7 +2783,7 @@ function timellow_handle_get_post_editor_data(WP_REST_Request $request)
     if (!timellow_user_can_manage_frontend_post($post_id)) {
         return array(
             'success' => false,
-            'message' => '没有权限编辑这篇文章',
+            'message' => '没有权限编辑这条说说',
         );
     }
 
@@ -2572,7 +2792,7 @@ function timellow_handle_get_post_editor_data(WP_REST_Request $request)
     if (empty($payload)) {
         return array(
             'success' => false,
-            'message' => '文章不存在或已被删除',
+            'message' => '说说不存在或已被删除',
         );
     }
 
@@ -2596,7 +2816,7 @@ function timellow_handle_update_post(WP_REST_Request $request)
     if (!timellow_user_can_manage_frontend_post($post_id)) {
         return array(
             'success' => false,
-            'message' => '没有权限编辑这篇文章',
+            'message' => '没有权限编辑这条说说',
         );
     }
 
@@ -2605,7 +2825,7 @@ function timellow_handle_update_post(WP_REST_Request $request)
     $position_url = esc_url_raw((string) $request->get_param('positionUrl'));
     $visibility = sanitize_key((string) $request->get_param('visibility'));
     $is_advertise = (string) $request->get_param('isAdvertise') === '1' ? '1' : '0';
-    $is_sticky = (string) $request->get_param('isSticky') === '1' && timellow_user_can_sticky_posts('post');
+    $is_sticky = (string) $request->get_param('isSticky') === '1' && timellow_user_can_sticky_posts(TIMELLOW_SHUOSHUO_POST_TYPE);
     $attachment_ids = timellow_collect_frontend_attachment_ids($request);
     $media_files = timellow_collect_frontend_media_files($request->get_file_params());
     $return_url = esc_url_raw((string) $request->get_param('returnUrl'));
@@ -2613,7 +2833,7 @@ function timellow_handle_update_post(WP_REST_Request $request)
     if ($content === '' && empty($media_files) && empty($attachment_ids)) {
         return array(
             'success' => false,
-            'message' => '请输入内容或选择图片/视频',
+            'message' => '请输入说说内容或选择图片/视频',
         );
     }
 
@@ -2696,7 +2916,7 @@ function timellow_handle_update_post(WP_REST_Request $request)
 
     return array(
         'success' => true,
-        'message' => '文章已更新',
+        'message' => '说说已更新',
         'postId' => $post_id,
         'status' => $status,
         'redirect' => esc_url_raw($redirect),
@@ -2742,6 +2962,9 @@ function timellow_handle_delete_post(WP_REST_Request $request)
 {
     $payload = $request->get_json_params();
     $post_id = is_array($payload) && isset($payload['postId']) ? absint($payload['postId']) : absint($request->get_param('postId'));
+    $post = get_post($post_id);
+    $label = $post && $post->post_type === 'post' ? '文章' : '说说';
+    $denied_message = $post && $post->post_type === 'post' ? '没有权限删除这篇文章' : '没有权限删除这条说说';
 
     if (!timellow_verify_rest_nonce($request)) {
         return array(
@@ -2750,23 +2973,23 @@ function timellow_handle_delete_post(WP_REST_Request $request)
         );
     }
 
-    if (!timellow_user_can_manage_frontend_post($post_id) || !current_user_can('delete_post', $post_id)) {
+    if (!timellow_user_can_delete_feed_post($post_id)) {
         return array(
             'success' => false,
-            'message' => '没有权限删除这篇文章',
+            'message' => $denied_message,
         );
     }
 
-    if (!wp_delete_post($post_id, true)) {
+    if (!wp_trash_post($post_id)) {
         return array(
             'success' => false,
-            'message' => '文章删除失败，请稍后重试',
+            'message' => $label . '移入回收站失败，请稍后重试',
         );
     }
 
     return array(
         'success' => true,
-        'message' => '文章已删除',
+        'message' => $label . '已移入回收站',
         'postId' => $post_id,
         'redirect' => esc_url_raw(home_url('/')),
     );
@@ -2777,7 +3000,7 @@ function timellow_handle_create_post(WP_REST_Request $request)
     if (!timellow_user_can_frontend_post()) {
         return array(
             'success' => false,
-            'message' => '请先登录具有发布权限的账号',
+            'message' => '请先登录具有发布说说权限的账号',
         );
     }
 
@@ -2786,14 +3009,14 @@ function timellow_handle_create_post(WP_REST_Request $request)
     $position_url = esc_url_raw((string) $request->get_param('positionUrl'));
     $visibility = sanitize_key((string) $request->get_param('visibility'));
     $is_advertise = (string) $request->get_param('isAdvertise') === '1' ? '1' : '0';
-    $is_sticky = (string) $request->get_param('isSticky') === '1' && timellow_user_can_sticky_posts('post');
+    $is_sticky = (string) $request->get_param('isSticky') === '1' && timellow_user_can_sticky_posts(TIMELLOW_SHUOSHUO_POST_TYPE);
     $attachment_ids = timellow_collect_frontend_attachment_ids($request);
     $media_files = timellow_collect_frontend_media_files($request->get_file_params());
 
     if ($content === '' && empty($media_files) && empty($attachment_ids)) {
         return array(
             'success' => false,
-            'message' => '请输入内容或选择图片/视频',
+            'message' => '请输入说说内容或选择图片/视频',
         );
     }
 
@@ -2809,7 +3032,7 @@ function timellow_handle_create_post(WP_REST_Request $request)
     $title = timellow_generate_frontend_post_title($content);
     $post_id = wp_insert_post(
         array(
-            'post_type' => 'post',
+            'post_type' => TIMELLOW_SHUOSHUO_POST_TYPE,
             'post_status' => 'draft',
             'post_title' => $title,
             'post_content' => '',
@@ -2867,12 +3090,10 @@ function timellow_handle_create_post(WP_REST_Request $request)
     update_post_meta((int) $post_id, '_timellow_is_advertise', $is_advertise);
     timellow_attach_media_to_post($media['attachment_ids'], (int) $post_id);
 
-    if ($status === 'publish') {
-        if ($is_sticky) {
-            stick_post((int) $post_id);
-        } else {
-            unstick_post((int) $post_id);
-        }
+    if ($status === 'publish' && $is_sticky) {
+        stick_post((int) $post_id);
+    } else {
+        unstick_post((int) $post_id);
     }
 
     if (!empty($media['images'][0]['id'])) {

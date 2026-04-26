@@ -262,7 +262,7 @@ if ($timellow_comment_user instanceof WP_User) {
                         const result = await response.json();
 
                         if (!result.success || !result.post) {
-                            await this.showAlert(result.message || '文章编辑数据加载失败', {
+                            await this.showAlert(result.message || '说说编辑数据加载失败', {
                                 title: '加载失败',
                                 tone: 'danger'
                             });
@@ -276,20 +276,21 @@ if ($timellow_comment_user instanceof WP_User) {
                             }
                         }));
                     } catch (error) {
-                        console.error('文章编辑数据加载失败:', error);
-                        await this.showAlert('文章编辑数据加载失败，请稍后重试', {
+                        console.error('说说编辑数据加载失败:', error);
+                        await this.showAlert('说说编辑数据加载失败，请稍后重试', {
                             title: '加载失败',
                             tone: 'danger'
                         });
                     }
                 },
 
-                async deletePost(event, postId) {
+                async deletePost(event, postId, postTypeLabel = '说说') {
                     event.preventDefault();
                     event.stopPropagation();
 
-                    const confirmed = await this.showConfirm('确定删除这篇文章吗？此操作不可恢复。', {
-                        title: '删除文章',
+                    const subjectText = postTypeLabel === '文章' ? '这篇文章' : '这条说说';
+                    const confirmed = await this.showConfirm(`确定将${subjectText}移入回收站吗？`, {
+                        title: `删除${postTypeLabel}`,
                         confirmText: '删除',
                         cancelText: '取消',
                         tone: 'danger'
@@ -316,7 +317,7 @@ if ($timellow_comment_user instanceof WP_User) {
                         const result = await response.json();
 
                         if (!result.success) {
-                            await this.showAlert(result.message || '文章删除失败，请稍后重试', {
+                            await this.showAlert(result.message || `${postTypeLabel}移入回收站失败，请稍后重试`, {
                                 title: '删除失败',
                                 tone: 'danger'
                             });
@@ -334,8 +335,8 @@ if ($timellow_comment_user instanceof WP_User) {
 
                         window.location.href = result.redirect || window.TIMELLOW_CONFIG.homeUrl || '/';
                     } catch (error) {
-                        console.error('文章删除失败:', error);
-                        await this.showAlert('文章删除失败，请稍后重试', {
+                        console.error(`${postTypeLabel}移入回收站失败:`, error);
+                        await this.showAlert(`${postTypeLabel}移入回收站失败，请稍后重试`, {
                             title: '删除失败',
                             tone: 'danger'
                         });

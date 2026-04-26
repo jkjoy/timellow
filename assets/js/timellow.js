@@ -480,7 +480,7 @@ window.toggleLike = function(event, cid) {
     }
 };
 function printCopyright() {
-    console.log('%cTimellow主题 By imsun v1.0.8 %chttps://imsun.de', 'color: white;  background-color: #99cc99; padding: 10px;', 'color: white; background-color: #ff6666; padding: 10px;');
+    console.log('%cTimellow主题 By imsun v1.0.9 %chttps://imsun.de', 'color: white;  background-color: #99cc99; padding: 10px;', 'color: white; background-color: #ff6666; padding: 10px;');
 }
 /**
  * 回到顶部功能
