@@ -29,7 +29,7 @@ function timellowWriteModalManager() {
         },
 
         get modalTitle() {
-            return this.isEditing ? '编辑文章' : '撰写';
+            return this.isEditing ? '编辑说说' : '发布说说';
         },
 
         get submitButtonText() {
@@ -590,7 +590,7 @@ function timellowWriteModalManager() {
             }
 
             if (!this.postContent.trim() && this.mediaFiles.length === 0) {
-                await this.showAlert('请输入内容或选择图片/视频', {
+                await this.showAlert('请输入说说内容或选择图片/视频', {
                     title: '内容为空'
                 });
                 return;
@@ -682,7 +682,7 @@ function timellowWriteModalManager() {
                         </svg>
                     </div>
                     <h3>请先登录</h3>
-                    <p>登录后即可在前端撰写并发布内容</p>
+                    <p>登录后即可在前端发布说说</p>
                     <button type="button" class="login-required-btn"
                             @click="close(); $nextTick(() => { document.querySelector('.login-modal')._x_dataStack[0].loginModalShow = true })">
                         立即登录
@@ -698,7 +698,7 @@ function timellowWriteModalManager() {
                         </svg>
                     </div>
                     <h3>暂无发布权限</h3>
-                    <p>当前账号无法在前端发布内容</p>
+                    <p>当前账号无法在前端发布说说</p>
                 </div>
             </div>
         <?php else : ?>
@@ -833,7 +833,7 @@ function timellowWriteModalManager() {
                             </div>
                         </div>
 
-                        <?php if (timellow_user_can_sticky_posts('post')) : ?>
+                        <?php if (timellow_user_can_sticky_posts(TIMELLOW_SHUOSHUO_POST_TYPE)) : ?>
                             <div class="edit-option-item" x-show="visibility === 'public'">
                                 <div class="option-icon">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="22" height="22">
@@ -842,7 +842,7 @@ function timellowWriteModalManager() {
                                     </svg>
                                 </div>
                                 <div class="option-content">
-                                    <span class="option-label">文章置顶</span>
+                                    <span class="option-label">说说置顶</span>
                                 </div>
                                 <div class="option-switch">
                                     <label class="switch">

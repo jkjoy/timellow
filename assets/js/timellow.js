@@ -454,18 +454,47 @@ function updateLikeUI($container, likes, isLiked, likeUsers) {
 }
 
 // 生成点赞文本
+function normalizeLikeUsersForDisplay(likeUsers) {
+    if (!Array.isArray(likeUsers)) {
+        return [];
+    }
+
+    let hasAnonymousUser = false;
+
+    return likeUsers.reduce((users, user) => {
+        const author = user && typeof user.author === 'string' ? user.author.trim() : '';
+        const displayAuthor = author || '匿名用户';
+
+        if (displayAuthor === '匿名用户') {
+            if (hasAnonymousUser) {
+                return users;
+            }
+
+            hasAnonymousUser = true;
+        }
+
+        users.push(Object.assign({}, user || {}, {
+            author: displayAuthor
+        }));
+
+        return users;
+    }, []);
+}
+
 function generateLikesText(likes, likeUsers) {
     if (likes === 0) {
         return '0 个点赞';
     }
 
-    if (!likeUsers || likeUsers.length === 0) {
+    const displayUsers = normalizeLikeUsersForDisplay(likeUsers);
+
+    if (displayUsers.length === 0) {
         return likes + ' 个点赞';
     }
 
     // 显示前3个用户名
-    const displayCount = Math.min(3, likeUsers.length);
-    const names = likeUsers.slice(0, displayCount).map(user => user.author).join('、');
+    const displayCount = Math.min(3, displayUsers.length);
+    const names = displayUsers.slice(0, displayCount).map(user => user.author).join('、');
 
     // 格式：昵称1、昵称2、昵称3 X个点赞
     return names + '、' + likes + '个点赞';
@@ -480,7 +509,7 @@ window.toggleLike = function(event, cid) {
     }
 };
 function printCopyright() {
-    console.log('%cTimellow主题 By imsun v1.0.8 %chttps://imsun.de', 'color: white;  background-color: #99cc99; padding: 10px;', 'color: white; background-color: #ff6666; padding: 10px;');
+    console.log('%cTimellow主题 By imsun v1.0.10 %chttps://imsun.de', 'color: white;  background-color: #99cc99; padding: 10px;', 'color: white; background-color: #ff6666; padding: 10px;');
 }
 /**
  * 回到顶部功能

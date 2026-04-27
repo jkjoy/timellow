@@ -389,6 +389,7 @@ main {
 /* 置顶和广告标识 */
 .top-badge {
     display: inline-block;
+    margin-left: auto;
     padding: 2px 6px;
     font-size: 12px;
     font-weight: 500;
@@ -401,6 +402,7 @@ main {
 
 .ad-badge {
     display: inline-block;
+    margin-left: auto;
     padding: 2px 6px;
     font-size: 12px;
     font-weight: 500;
@@ -408,6 +410,10 @@ main {
     background-color: #ff4444;
     border-radius: 3px;
     line-height: 1;
+}
+
+.top-badge + .ad-badge {
+    margin-left: 0;
 }
 
 /* 文章元信息 */
@@ -437,6 +443,91 @@ main {
     word-break: break-all;
     word-wrap: break-word;
     overflow-wrap: break-word;
+}
+
+.article-share-content {
+    margin-bottom: 12px;
+}
+
+.article-share-update {
+    color: var(--text-color);
+    font-size: inherit;
+    font-weight: 400;
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+
+.article-share-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.post-content .article-share-tag {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    min-height: 26px;
+    padding: 2px 8px;
+    border: 1px solid rgba(87, 107, 149, 0.35);
+    border-radius: 6px;
+    background: rgba(87, 107, 149, 0.12);
+    color: var(--link);
+    font-size: 13px;
+    line-height: 1.4;
+    text-decoration: none;
+    box-sizing: border-box;
+}
+
+.article-share-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--primary-background);
+    color: var(--text-color);
+    text-decoration: none!important;
+    box-sizing: border-box;
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.article-share-card:hover {
+    background: var(--primary-background-hover);
+}
+
+.article-share-thumb {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--main-background);
+}
+
+.article-share-thumb img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.article-share-card-title {
+    min-width: 0;
+    color: var(--link);
+    font-size: 14px;
+    line-height: 1.35;
+    word-break: break-word;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 /* 文章位置 */
@@ -526,6 +617,7 @@ main {
     border: 0;
     background: transparent;
     color: inherit;
+    text-decoration: none;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -2129,8 +2221,13 @@ body.timellow-dialog-open {
 }
 
 body.search-results .scrollload-content > .post-item:first-child,
-body.archive.tag .scrollload-content > .post-item:first-child {
+body.archive.tag .scrollload-content > .post-item:first-child,
+body.author .scrollload-content > .post-item:first-child {
     margin-top: 20px;
+}
+
+body.home .scrollload-content > .post-item:first-child {
+    margin-top: 28px;
 }
 
 .archive-empty {
