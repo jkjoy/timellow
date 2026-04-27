@@ -3,7 +3,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('TIMELLOW_THEME_VERSION', '1.0.9');
+define('TIMELLOW_THEME_VERSION', '1.0.10');
 define('TIMELLOW_DB_VERSION', '1.0.0');
 define('TIMELLOW_THEME_UPDATE_REPO', 'jkjoy/timellow');
 define('TIMELLOW_THEME_UPDATE_CACHE_KEY', 'timellow_theme_update_release');
@@ -2153,10 +2153,21 @@ function timellow_prepare_like_response($post_id, $actor_key = '')
 {
     $rows = timellow_get_like_rows($post_id);
     $like_users = array();
+    $has_anonymous_user = false;
 
     foreach ($rows as $row) {
+        $author = timellow_get_like_row_author_name($row);
+
+        if ($author === '匿名用户') {
+            if ($has_anonymous_user) {
+                continue;
+            }
+
+            $has_anonymous_user = true;
+        }
+
         $like_users[] = array(
-            'author' => timellow_get_like_row_author_name($row),
+            'author' => $author,
         );
     }
 
